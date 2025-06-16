@@ -1,59 +1,27 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  Box,
-  TextField,
-  Typography,
-  Grid,
-  Card,
-  CardContent,
-  Button,
-  ToggleButtonGroup,
-  ToggleButton,
-  Divider,
-  Autocomplete as MUIAutocomplete,
-  Stack,
-} from "@mui/material";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
-import L from "leaflet";
-import axios from "axios";
-import "leaflet/dist/leaflet.css";
-import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
-import "leaflet-routing-machine";
-import LocationOnIcon from "@mui/icons-material/LocationOn";
-import FlagIcon from "@mui/icons-material/Flag";
-import DriveEtaIcon from "@mui/icons-material/DriveEta";
+import React, { useState, useRef, useEffect } from "react";
+import { Box, Typography } from "@mui/material";
 import { toast } from "react-toastify";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
+// Components
+import MapViewWithRouting from "../components/MapViewWithRouting";
+import LocationInputPanel from "../components/LocationInputPanel";
+import RideSummaryDrawer from "../components/RideSummaryDrawer";
+import RideHistoryList from "../components/RideHistoryList";
+import VehicleSelectionPanel from "../components/VehicleSelectionPanel";
+import fareRates from "../config/fareConfig";
+
+// Fix leaflet marker icon loading
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
   shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
 });
-
-const Routing = ({ pickupCoords, dropoffCoords, setDistanceKm }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (!pickupCoords || !dropoffCoords) return;
-    const control = L.Routing.control({
-      waypoints: [L.latLng(pickupCoords), L.latLng(dropoffCoords)],
-      show: false,
-      addWaypoints: false,
-      draggableWaypoints: false,
-      routeWhileDragging: false,
-      fitSelectedRoutes: true,
-    })
-      .on("routesfound", (e) => {
-        const distance = e.routes[0].summary.totalDistance / 1000;
-        setDistanceKm(distance);
-      })
-      .addTo(map);
-    return () => map.removeControl(control);
-  }, [pickupCoords, dropoffCoords, map, setDistanceKm]);
-  return null;
-};
 
 const PassengerDashboard = () => {
   const [pickup, setPickup] = useState("");
@@ -62,8 +30,10 @@ const PassengerDashboard = () => {
   const [dropoffCoords, setDropoffCoords] = useState(null);
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [dropoffSuggestions, setDropoffSuggestions] = useState([]);
-  const [rideType, setRideType] = useState("Standard");
+  const [rideType, setRideType] = useState("");
+  const [vehicleType, setVehicleType] = useState("");
   const [distanceKm, setDistanceKm] = useState(null);
+  const [surgeMultiplier, setSurgeMultiplier] = useState(1.0); // ✅ NEW
   const [history, setHistory] = useState(
     JSON.parse(localStorage.getItem("rideHistory")) || []
   );
@@ -71,8 +41,44 @@ const PassengerDashboard = () => {
   const navigate = useNavigate();
   const mapRef = useRef();
 
+  // ✅ Calculate Fare with config, surge, flat fee, and min fare
+  const calculateFare = (distance) => {
+    if (!distance || !rideType || !vehicleType) return 0;
+
+    const baseRate = fareRates[vehicleType]?.[rideType] || 1.5;
+    const flatFee = 5.0;
+    const minFare = 30.0;
+
+    const raw = distance * baseRate * surgeMultiplier;
+    const total = raw + flatFee;
+
+    return Math.max(total, minFare).toFixed(2);
+  };
+
+  // ✅ Trigger surge pricing after both locations are set
+  useEffect(() => {
+    if (pickupCoords && dropoffCoords) {
+      setSurgeMultiplier(1.0 + Math.random() * 0.5); // Simulate 1.0–1.5 surge
+    }
+  }, [pickupCoords, dropoffCoords]);
+
+  // const fetchSuggestions = async (input, setOptions) => {
+  //   if (!input) return;
+  //   try {
+  //     const res = await axios.get(
+  //       "https://nominatim.openstreetmap.org/search",
+  //       {
+  //         params: { q: input, format: "json", addressdetails: 1, limit: 5 },
+  //       }
+  //     );
+  //     setOptions(res.data.map((item) => item.display_name));
+  //   } catch (err) {
+  //     console.error(err);
+  //   }
+  // };
   const fetchSuggestions = async (input, setOptions) => {
-    if (!input) return;
+    if (!input) return setOptions([]);
+
     try {
       const res = await axios.get(
         "https://nominatim.openstreetmap.org/search",
@@ -80,9 +86,11 @@ const PassengerDashboard = () => {
           params: { q: input, format: "json", addressdetails: 1, limit: 5 },
         }
       );
-      setOptions(res.data.map((item) => item.display_name));
+      const options = res.data.map((item) => item.display_name);
+      setOptions(options || []);
     } catch (err) {
       console.error(err);
+      setOptions([]); // fallback if fetch fails
     }
   };
 
@@ -109,13 +117,16 @@ const PassengerDashboard = () => {
       toast.error("Please enter both pickup and dropoff locations.");
       return;
     }
-    const fare = calculateFare(distanceKm);
+
+    const fareAmount = calculateFare(distanceKm);
     const newRide = {
       pickup,
       dropoff,
       rideType,
+      vehicleType,
       distance: distanceKm,
-      fare,
+      fare: fareAmount,
+      surge: surgeMultiplier,
     };
     const updatedHistory = [newRide, ...history.slice(0, 4)];
     localStorage.setItem("rideHistory", JSON.stringify(updatedHistory));
@@ -124,212 +135,115 @@ const PassengerDashboard = () => {
     navigate("/ride-in-progress");
   };
 
-  const calculateFare = (distance) => {
-    const rates = { Standard: 1.5, Premium: 2.5, Shared: 1.0 };
-    return (distance * rates[rideType]).toFixed(2);
-  };
-
-  const eta = distanceKm ? `${Math.ceil(distanceKm * 2)} mins` : "--";
-
   const handleRebook = (ride) => {
     setPickup(ride.pickup);
     setDropoff(ride.dropoff);
     setRideType(ride.rideType);
+    setVehicleType(ride.vehicleType || "Car");
     fetchCoordinates(ride.pickup, setPickup, setPickupCoords);
     fetchCoordinates(ride.dropoff, setDropoff, setDropoffCoords);
   };
 
+  const vehicleSpeeds = {
+    Car: 30, // km/h
+    Bike: 40,
+    CNG: 25,
+  };
+
+  const eta = distanceKm
+    ? `${Math.ceil(
+        (distanceKm / (vehicleSpeeds[vehicleType] || 30)) * 60
+      )} mins`
+    : "--";
+
+  const fare = distanceKm ? calculateFare(distanceKm) : "--";
+  const locationsSelected = pickupCoords && dropoffCoords;
+
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto", mt: 3, px: 2 }}>
-      <Typography variant="h4" align="center" gutterBottom>
-        Book a Ride
-      </Typography>
-
-      <Stack direction={{ xs: "column", md: "row" }} spacing={2} mb={2}>
-        <Box display="flex" alignItems="center" gap={1} flex={1}>
-          <LocationOnIcon color="primary" sx={{ mt: 1.5 }} />
-          <MUIAutocomplete
-            freeSolo
-            options={pickupSuggestions}
-            inputValue={pickup}
-            onInputChange={(e, val) => {
-              setPickup(val);
-              fetchSuggestions(val, setPickupSuggestions);
-            }}
-            onChange={(e, val) => {
-              setPickup(val);
-              fetchCoordinates(val, setPickup, setPickupCoords);
-            }}
-            sx={{ width: "100%" }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Pickup Location"
-                fullWidth
-                autoComplete="off"
-              />
-            )}
-          />
-        </Box>
-        <Box display="flex" alignItems="center" gap={1} flex={1}>
-          <FlagIcon color="secondary" sx={{ mt: 1.5 }} />
-          <MUIAutocomplete
-            freeSolo
-            options={dropoffSuggestions}
-            inputValue={dropoff}
-            onInputChange={(e, val) => {
-              setDropoff(val);
-              fetchSuggestions(val, setDropoffSuggestions);
-            }}
-            onChange={(e, val) => {
-              setDropoff(val);
-              fetchCoordinates(val, setDropoff, setDropoffCoords);
-            }}
-            sx={{ width: "100%" }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Dropoff Location"
-                fullWidth
-                autoComplete="off"
-              />
-            )}
-          />
-        </Box>
-      </Stack>
-
-      <Box textAlign="center" my={2}>
-        <Typography variant="subtitle1" gutterBottom>
-          Select Ride Type
-        </Typography>
-        <ToggleButtonGroup
-          value={rideType}
-          exclusive
-          onChange={(e, val) => val && setRideType(val)}
-          size="small"
-          sx={{ mt: 1 }}
-        >
-          <ToggleButton value="Standard" sx={{ px: 3 }}>
-            STANDARD
-          </ToggleButton>
-          <ToggleButton value="Premium" sx={{ px: 3 }}>
-            PREMIUM
-          </ToggleButton>
-          <ToggleButton value="Shared" sx={{ px: 3 }}>
-            SHARED
-          </ToggleButton>
-        </ToggleButtonGroup>
+    <Box sx={{ width: "100%", height: "100vh", position: "relative" }}>
+      <Box sx={{ width: "100%", height: "100%" }}>
+        <MapViewWithRouting
+          pickupCoords={pickupCoords}
+          dropoffCoords={dropoffCoords}
+          setDistanceKm={setDistanceKm}
+          mapRef={mapRef}
+        />
       </Box>
 
-      <Box mt={4}>
+      <Box
+        sx={{
+          position: "absolute",
+          top: 20,
+          left: 60,
+          width: { xs: "90%", sm: 450 },
+          bgcolor: "white",
+          boxShadow: 3,
+          borderRadius: 2,
+          p: 2,
+          zIndex: 1000,
+        }}
+      >
         <Typography variant="h6" gutterBottom>
-          Map Preview
+          Book a Ride
         </Typography>
-        <Box sx={{ width: "100%", height: 400, mb: 4 }}>
-          <MapContainer
-            center={[23.8103, 90.4125]}
-            zoom={13}
-            scrollWheelZoom={false}
-            style={{ width: "100%", height: "100%" }}
-            ref={mapRef}
-          >
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {pickupCoords && <Marker position={pickupCoords} />}
-            {dropoffCoords && <Marker position={dropoffCoords} />}
-            {pickupCoords && dropoffCoords && (
-              <Routing
-                pickupCoords={pickupCoords}
-                dropoffCoords={dropoffCoords}
-                setDistanceKm={setDistanceKm}
-              />
-            )}
-          </MapContainer>
-        </Box>
+        <LocationInputPanel
+          pickup={pickup}
+          dropoff={dropoff}
+          pickupSuggestions={pickupSuggestions}
+          dropoffSuggestions={dropoffSuggestions}
+          onPickupChange={(val) => {
+            setPickup(val);
+            fetchSuggestions(val, setPickupSuggestions);
+          }}
+          onDropoffChange={(val) => {
+            setDropoff(val);
+            fetchSuggestions(val, setDropoffSuggestions);
+          }}
+          onPickupSelect={(val) => {
+            setPickup(val);
+            fetchCoordinates(val, setPickup, setPickupCoords);
+          }}
+          onDropoffSelect={(val) => {
+            setDropoff(val);
+            fetchCoordinates(val, setDropoff, setDropoffCoords);
+          }}
+        />
       </Box>
 
-      <Card elevation={1} sx={{ borderRadius: 2 }}>
-        <CardContent sx={{ px: 3, py: 2 }}>
-          <Box display="flex" alignItems="center" gap={2} mb={1}>
-            <DriveEtaIcon color="primary" />
-            <Typography variant="h6">Ride Summary</Typography>
-          </Box>
-          <Divider sx={{ mb: 2 }} />
-          <Typography>
-            <strong>From:</strong> {pickup || "Not selected"}
-          </Typography>
-          <Typography>
-            <strong>To:</strong> {dropoff || "Not selected"}
-          </Typography>
-          <Typography>
-            <strong>Type:</strong> {rideType}
-          </Typography>
-          <Typography>
-            <strong>Distance:</strong>{" "}
-            {distanceKm ? `${distanceKm.toFixed(2)} km` : "--"}
-          </Typography>
-          <Typography>
-            <strong>ETA:</strong> {eta}
-          </Typography>
-          <Typography>
-            <strong>Estimated Fare:</strong> $
-            {distanceKm ? calculateFare(distanceKm) : "--"}
-          </Typography>
-          <Box textAlign="right" mt={3}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleConfirmRide}
-              disabled={!pickupCoords || !dropoffCoords}
-            >
-              Confirm Ride
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-
-      {history.length > 0 && (
-        <Box mt={5}>
-          <Typography variant="h6" gutterBottom>
-            Recent Rides
-          </Typography>
-          <Grid container spacing={2}>
-            {history.map((ride, i) => (
-              <Grid item xs={12} sm={6} key={i}>
-                <Card variant="outlined" sx={{ borderRadius: 2 }}>
-                  <CardContent>
-                    <Typography>
-                      <strong>From:</strong> {ride.pickup}
-                    </Typography>
-                    <Typography>
-                      <strong>To:</strong> {ride.dropoff}
-                    </Typography>
-                    <Typography>
-                      <strong>Type:</strong> {ride.rideType}
-                    </Typography>
-                    <Typography>
-                      <strong>Distance:</strong> {ride.distance?.toFixed(2)} km
-                    </Typography>
-                    <Typography>
-                      <strong>Fare:</strong> ${ride.fare}
-                    </Typography>
-                    <Box mt={2} textAlign="right">
-                      <Button
-                        variant="outlined"
-                        onClick={() => handleRebook(ride)}
-                      >
-                        Rebook
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
+      {locationsSelected && (
+        <VehicleSelectionPanel
+          rideType={rideType}
+          onRideTypeChange={setRideType}
+          vehicleType={vehicleType}
+          onVehicleTypeChange={setVehicleType}
+          fare={fare}
+          eta={eta}
+          surgeMultiplier={surgeMultiplier} // ✅ now passed to UI
+          onConfirmRide={handleConfirmRide}
+        />
       )}
+
+      <Box
+        sx={{
+          position: "absolute",
+          bottom: 20,
+          right: 20,
+          width: { xs: "90%", sm: 400 },
+          zIndex: 1000,
+        }}
+      >
+        <RideSummaryDrawer
+          pickup={pickup}
+          dropoff={dropoff}
+          rideType={rideType}
+          vehicleType={vehicleType}
+          distanceKm={distanceKm}
+          eta={eta}
+          fare={fare}
+          onConfirmRide={handleConfirmRide}
+          disabled={!locationsSelected}
+        />
+      </Box>
     </Box>
   );
 };

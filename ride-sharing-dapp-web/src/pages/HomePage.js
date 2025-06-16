@@ -77,63 +77,9 @@ const HomePage = () => {
         </Box>
       </Box>
 
-      {/* Features Section */}
-      <Container sx={{ my: 6 }}>
-        <Typography
-          component={motion.div}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={fadeIn}
-          variant="h4"
-          textAlign="center"
-          mb={4}
-        >
-          Why Choose Us?
-        </Typography>
-        <Grid container spacing={4}>
-          {[
-            {
-              icon: <DirectionsCarIcon fontSize="large" />,
-              title: "Easy Booking",
-            },
-            {
-              icon: <SecurityIcon fontSize="large" />,
-              title: "Secure Payments",
-            },
-            {
-              icon: <TravelExploreIcon fontSize="large" />,
-              title: "Live Tracking",
-            },
-          ].map((item, index) => (
-            <Grid
-              item
-              xs={12}
-              md={4}
-              key={index}
-              component={motion.div}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              custom={index + 1}
-              variants={fadeIn}
-            >
-              <Card sx={{ textAlign: "center", p: 3 }}>
-                <CardContent>
-                  {item.icon}
-                  <Typography variant="h6" mt={2}>
-                    {item.title}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Container>
-
-      {/* How It Works Section */}
-      <Box bgcolor="#f9f9f9" py={6}>
-        <Container>
+      {/* Features Section - Optimized spacing */}
+      <Box sx={{ py: { xs: 4, md: 6 }, bgcolor: "#fff" }}>
+        <Container maxWidth="md">
           <Typography
             component={motion.div}
             initial="hidden"
@@ -144,19 +90,83 @@ const HomePage = () => {
             textAlign="center"
             mb={4}
           >
+            Why Choose Us?
+          </Typography>
+
+          <Grid container spacing={3} justifyContent="center">
+            {[
+              {
+                icon: <DirectionsCarIcon fontSize="large" />,
+                title: "Easy Booking",
+              },
+              {
+                icon: <SecurityIcon fontSize="large" />,
+                title: "Secure Payments",
+              },
+              {
+                icon: <TravelExploreIcon fontSize="large" />,
+                title: "Live Tracking",
+              },
+            ].map((item, index) => (
+              <Grid
+                item
+                xs={12}
+                sm={4}
+                key={index}
+                component={motion.div}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                custom={index + 1}
+                variants={fadeIn}
+              >
+                <Card sx={{ textAlign: "center", py: 3 }}>
+                  <CardContent>
+                    {item.icon}
+                    <Typography variant="h6" mt={1.5}>
+                      {item.title}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+      </Box>
+
+      {/* How It Works Section */}
+      <Box bgcolor="#f9f9f9" py={6}>
+        <Container maxWidth="lg">
+          <Typography
+            component={motion.div}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeIn}
+            variant="h4"
+            textAlign="center"
+            mb={6}
+          >
             How It Works
           </Typography>
-          <Grid container spacing={4}>
+
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "stretch", // ✅ make all children same height
+              flexWrap: "nowrap",
+              gap: 3,
+              overflowX: "auto",
+            }}
+          >
             {[
               "Choose your role: Passenger or Driver",
               "Enter pickup and drop-off location",
               "Confirm ride and get matched",
               "Enjoy your journey!",
             ].map((step, i) => (
-              <Grid
-                item
-                xs={12}
-                md={3}
+              <Box
                 key={i}
                 component={motion.div}
                 initial="hidden"
@@ -164,18 +174,33 @@ const HomePage = () => {
                 viewport={{ once: true }}
                 custom={i + 1}
                 variants={fadeIn}
+                sx={{
+                  minWidth: { xs: "250px", sm: "200px", md: "230px" },
+                  flex: "1 1 0", // ✅ allows uniform scaling
+                  display: "flex", // ✅ child Box behaves like flex container
+                  flexDirection: "column",
+                }}
               >
-                <Card sx={{ height: "100%", textAlign: "center", py: 4 }}>
-                  <CardContent>
+                <Card
+                  sx={{
+                    flexGrow: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    p: 3,
+                  }}
+                >
+                  <CardContent sx={{ flexGrow: 1 }}>
                     <Typography variant="h5" fontWeight="bold">
                       Step {i + 1}
                     </Typography>
                     <Typography mt={2}>{step}</Typography>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Box>
             ))}
-          </Grid>
+          </Box>
         </Container>
       </Box>
 

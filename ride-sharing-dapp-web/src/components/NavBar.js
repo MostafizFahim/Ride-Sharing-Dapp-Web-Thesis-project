@@ -57,7 +57,7 @@ export default function NavBar() {
           >
             Ride Sharing DApp
           </Typography>
-          <Button
+          {/* <Button
             variant="text"
             sx={{ color: "#fff" }}
             onClick={() => handleRoleNav("Passenger")}
@@ -70,7 +70,7 @@ export default function NavBar() {
             onClick={() => handleRoleNav("Driver")}
           >
             Drive
-          </Button>
+          </Button> */}
         </Box>
 
         {/* Right Side Buttons or Avatar */}

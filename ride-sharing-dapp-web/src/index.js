@@ -4,6 +4,9 @@ import App from "./App";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { BrowserRouter } from "react-router-dom";
 
+// Clear localStorage on fresh reload
+localStorage.removeItem("user");
+
 // 🔑 Replace with your actual Google OAuth client ID
 const clientId =
   "280972182232-tknpa40a80lhbhc10aem3sekk6mn6jq1.apps.googleusercontent.com";
