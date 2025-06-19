@@ -1,39 +1,70 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   AppBar,
   Toolbar,
   Typography,
-  Button,
-  Box,
   IconButton,
   Menu,
   MenuItem,
   Avatar,
   Tooltip,
+  Divider,
+  Chip,
+  Box,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { UserContext } from "./UserContext"; // adjust path if needed
 
 export default function NavBar() {
-  const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+  const { user, setUser } = useContext(UserContext);
   const isLoggedIn = !!user;
   const [anchorEl, setAnchorEl] = useState(null);
+  const navigate = useNavigate();
 
+  const currentRole = user?.currentRole || "Passenger";
+  const roles = user?.roles || ["Passenger"];
+
+  // LOGOUT clears both context and localStorage
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    setUser(null);
     toast.info("Logged out successfully");
     navigate("/login");
   };
 
+  // Navigates user to dashboard by role
   const handleRoleNav = (role) => {
     if (!isLoggedIn) {
       toast.warning("Please login first");
       navigate("/login");
       return;
     }
-    navigate(role === "Passenger" ? "/passenger" : "/driver");
+    if (role === "Driver") navigate("/driver");
+    else if (role === "Passenger") navigate("/passenger");
+    else if (role === "Admin") navigate("/admin");
+    else navigate("/");
+  };
+
+  // Handles switching role in user context
+  const handleSwitchRole = () => {
+    if (!isLoggedIn) return;
+    if (roles.includes("Driver") && roles.includes("Passenger")) {
+      const newRole = currentRole === "Driver" ? "Passenger" : "Driver";
+      setUser({ ...user, currentRole: newRole });
+      localStorage.setItem(
+        "user",
+        JSON.stringify({ ...user, currentRole: newRole })
+      ); // ADD THIS LINE
+      toast.success(`Switched to ${newRole} mode`);
+      handleRoleNav(newRole);
+    } else if (roles.includes("Passenger") && !roles.includes("Driver")) {
+      toast.info("Register as a driver to enable driver mode.");
+      navigate("/driver-registration");
+    } else {
+      toast.info("No other role to switch to.");
+    }
+    handleMenuClose();
   };
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
@@ -42,57 +73,74 @@ export default function NavBar() {
   return (
     <AppBar
       position="static"
+      elevation={4}
       sx={{
-        background: "linear-gradient(to right, #6a11cb, #2575fc)",
-        borderBottom: "2px solid #fff",
+        background: "linear-gradient(90deg, #00274d 0%, #2575fc 100%)",
+        borderBottom: "3px solid #b71c1c",
+        minHeight: 68,
       }}
     >
-      <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-        {/* App Logo + Buttons */}
+      <Toolbar
+        sx={{ display: "flex", justifyContent: "space-between", minHeight: 68 }}
+      >
+        {/* Logo & Current Role */}
         <Box display="flex" alignItems="center" gap={2}>
           <Typography
             variant="h6"
-            sx={{ fontWeight: "bold", cursor: "pointer", color: "#fff" }}
+            sx={{
+              fontWeight: 900,
+              cursor: "pointer",
+              color: "#fff",
+              letterSpacing: 2,
+              fontSize: { xs: "1.1rem", md: "1.3rem" },
+              textShadow: "0 2px 8px rgba(30,40,100,0.2)",
+            }}
             onClick={() => navigate("/")}
           >
-            Ride Sharing DApp
+            NexTrip
           </Typography>
-          {/* <Button
-            variant="text"
-            sx={{ color: "#fff" }}
-            onClick={() => handleRoleNav("Passenger")}
-          >
-            Ride
-          </Button>
-          <Button
-            variant="text"
-            sx={{ color: "#fff" }}
-            onClick={() => handleRoleNav("Driver")}
-          >
-            Drive
-          </Button> */}
+          {isLoggedIn && (
+            <Chip
+              label={currentRole}
+              color={currentRole === "Driver" ? "info" : "primary"}
+              size="small"
+              sx={{ ml: 1, color: "#fff", fontWeight: 700, bgcolor: "#3793e0" }}
+            />
+          )}
         </Box>
-
-        {/* Right Side Buttons or Avatar */}
-        <Box display="flex" alignItems="center" gap={1}>
+        {/* Avatar & Menu */}
+        <Box display="flex" alignItems="center" gap={1.5}>
           {isLoggedIn && user?.picture && (
             <Tooltip title={user.email}>
               <Avatar
                 src={user.picture}
                 alt="User"
-                sx={{ width: 32, height: 32 }}
+                sx={{
+                  width: 36,
+                  height: 36,
+                  border: "2px solid #2575fc",
+                  boxShadow: "0 2px 6px rgba(33,47,98,0.10)",
+                  bgcolor: "#f5f7fa",
+                }}
               />
             </Tooltip>
           )}
-
-          <IconButton onClick={handleMenuOpen} sx={{ color: "#fff" }}>
-            <MenuIcon />
+          <IconButton onClick={handleMenuOpen} sx={{ color: "#fff", ml: 0.5 }}>
+            <MenuIcon sx={{ fontSize: 30 }} />
           </IconButton>
-
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
             onClose={handleMenuClose}
+            PaperProps={{
+              sx: {
+                borderRadius: 3,
+                minWidth: 200,
+                mt: 1,
+                boxShadow: 4,
+                bgcolor: "#e3ecfa",
+              },
+            }}
           >
             <MenuItem
               onClick={() => {
@@ -110,22 +158,35 @@ export default function NavBar() {
             >
               Ride In Progress
             </MenuItem>
+            {/* Role Switch Option */}
+            {isLoggedIn && roles.includes("Passenger") && (
+              <MenuItem onClick={handleSwitchRole}>
+                {roles.includes("Driver")
+                  ? currentRole === "Passenger"
+                    ? "Switch to Driver"
+                    : "Switch to Passenger"
+                  : "Become a Driver"}
+              </MenuItem>
+            )}
             <MenuItem
               onClick={() => {
-                navigate("/select-role");
+                navigate("/driver-registration");
                 handleMenuClose();
               }}
             >
-              Select Role
+              Driver Registration
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                navigate("/admin");
-                handleMenuClose();
-              }}
-            >
-              Admin Panel
-            </MenuItem>
+            {roles.includes("Admin") && (
+              <MenuItem
+                onClick={() => {
+                  navigate("/admin");
+                  handleMenuClose();
+                }}
+              >
+                Admin Panel
+              </MenuItem>
+            )}
+            <Divider sx={{ my: 0.5 }} />
             {isLoggedIn && (
               <>
                 <MenuItem
@@ -140,6 +201,10 @@ export default function NavBar() {
                   onClick={() => {
                     handleLogout();
                     handleMenuClose();
+                  }}
+                  sx={{
+                    color: "#b71c1c",
+                    fontWeight: 700,
                   }}
                 >
                   Logout

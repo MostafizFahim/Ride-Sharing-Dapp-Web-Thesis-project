@@ -2,16 +2,36 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Container, Typography, Button, Box, Paper } from "@mui/material";
 import { toast } from "react-toastify";
+import { useUser } from "../components/UserContext"; // adjust path if needed
 
 export default function SelectRolePage() {
   const navigate = useNavigate();
+  const { user, setUser } = useUser();
 
   const handleRoleSelect = (role) => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const updatedUser = { ...storedUser, role };
+    const prevRoles = user?.roles || [];
+    const updatedRoles = prevRoles.includes(role)
+      ? prevRoles
+      : [...prevRoles, role];
+    const updatedUser = {
+      ...user,
+      currentRole: role,
+      roles: updatedRoles,
+      role, // for legacy compatibility
+    };
+
+    // Save to context/global state (instant update everywhere)
+    setUser(updatedUser);
+
+    // Also update in localStorage for login persistence
     localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("registeredUser", JSON.stringify(updatedUser));
+
     toast.success(`Logged in as ${role}`);
-    navigate(role === "Passenger" ? "/passenger" : "/driver");
+    if (role === "Passenger") navigate("/passenger");
+    else if (role === "Driver") navigate("/driver");
+    else if (role === "Admin") navigate("/admin");
+    else navigate("/");
   };
 
   return (
@@ -34,6 +54,13 @@ export default function SelectRolePage() {
             onClick={() => handleRoleSelect("Driver")}
           >
             I’m a Driver
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => handleRoleSelect("Admin")}
+          >
+            I’m Admin
           </Button>
         </Box>
       </Paper>

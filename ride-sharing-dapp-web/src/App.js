@@ -4,11 +4,9 @@ import { ToastContainer } from "react-toastify";
 import { CssBaseline } from "@mui/material";
 import "react-toastify/dist/ReactToastify.css";
 
-// Components
 import NavBar from "./components/NavBar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Pages
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -19,18 +17,19 @@ import RideInProgress from "./pages/RideInProgress";
 import RideHistory from "./pages/RideHistory";
 import ProfilePage from "./pages/ProfilePage";
 import AdminDashboard from "./pages/AdminDashboard";
+import DriverRegistration from "./pages/DriverRegistration";
+import { UserProvider } from "./components/UserContext";
 
 export default function App() {
   return (
-    <>
+    <UserProvider>
       <CssBaseline />
       <NavBar />
-
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-
+        <Route path="/driver-registration" element={<DriverRegistration />} />
         <Route
           path="/select-role"
           element={
@@ -39,7 +38,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/passenger"
           element={
@@ -64,7 +62,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/ride-in-progress"
           element={
@@ -90,8 +87,7 @@ export default function App() {
           }
         />
       </Routes>
-
       <ToastContainer position="top-right" autoClose={3000} />
-    </>
+    </UserProvider>
   );
 }
