@@ -199,7 +199,7 @@ const HomePage = () => {
     }
     if (currentRole === "Passenger") {
       return (
-        <Box display="flex" gap={2}>
+        <Box display="flex" gap={2} ml={{ xs: 4, md: 8 }}>
           <Button
             variant="contained"
             sx={mainButtonStyle}
@@ -225,6 +225,7 @@ const HomePage = () => {
         </Box>
       );
     }
+
     if (currentRole === "Driver") {
       return (
         <Button

@@ -4,8 +4,6 @@ import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { toast } from "react-toastify";
 
-const ORS_API_KEY = process.env.REACT_APP_ORS_API_KEY;
-
 export default function MapLibreMap({
   pickupCoords,
   dropoffCoords,
@@ -20,14 +18,15 @@ export default function MapLibreMap({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: "https://tiles.stadiamaps.com/styles/alidade_smooth.json",
+      style: `https://tiles.stadiamaps.com/styles/alidade_smooth.json`,
       center: [90.4125, 23.8103],
-      zoom: 12,
+      zoom: 14,
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     mapRef.current = map;
 
+    // Center on user's current location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
         const userCoords = [pos.coords.longitude, pos.coords.latitude];
@@ -36,32 +35,42 @@ export default function MapLibreMap({
           .setPopup(new maplibregl.Popup().setText("You are here"))
           .addTo(map)
           .togglePopup();
-        map.flyTo({ center: userCoords, zoom: 14 });
+        map.flyTo({ center: userCoords, zoom: 15 });
       });
     }
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
+    const ORS_API_KEY = process.env.REACT_APP_ORS_API_KEY;
+
     if (!map || !pickupCoords || !dropoffCoords) return;
 
     if (
       !Array.isArray(pickupCoords) ||
       !Array.isArray(dropoffCoords) ||
       pickupCoords.length !== 2 ||
-      dropoffCoords.length !== 2
+      dropoffCoords.length !== 2 ||
+      isNaN(pickupCoords[0]) ||
+      isNaN(pickupCoords[1]) ||
+      isNaN(dropoffCoords[0]) ||
+      isNaN(dropoffCoords[1])
     ) {
-      console.error("❌ Invalid coordinates:", { pickupCoords, dropoffCoords });
+      console.error("❌ Invalid coordinates:", pickupCoords, dropoffCoords);
       return;
     }
 
-    // Remove previous route and markers
-    if (map.getLayer("route-line")) map.removeLayer("route-line");
-    if (map.getSource("route")) map.removeSource("route");
+    // Clean up previous layers and markers
+    try {
+      if (map.getLayer("route-line")) map.removeLayer("route-line");
+      if (map.getSource("route")) map.removeSource("route");
+    } catch (err) {
+      console.warn("Route cleanup failed:", err);
+    }
+
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    // Add pickup & dropoff markers
     const pickupMarker = new maplibregl.Marker({ color: "green" })
       .setLngLat(pickupCoords)
       .setPopup(new maplibregl.Popup().setText("Pickup"))
@@ -74,9 +83,22 @@ export default function MapLibreMap({
 
     markersRef.current.push(pickupMarker, dropoffMarker);
 
-    map.fitBounds([pickupCoords, dropoffCoords], { padding: 60 });
+    if (
+      pickupCoords[0] === dropoffCoords[0] &&
+      pickupCoords[1] === dropoffCoords[1]
+    ) {
+      map.flyTo({ center: pickupCoords, zoom: 15 });
+    } else {
+      map.fitBounds([pickupCoords, dropoffCoords], { padding: 60 });
+    }
 
     const fetchRoute = async () => {
+      if (!ORS_API_KEY) {
+        console.warn("🚨 ORS API key is missing.");
+        toast.error("Missing OpenRouteService API key.");
+        return;
+      }
+
       try {
         const res = await axios.post(
           "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
@@ -105,7 +127,10 @@ export default function MapLibreMap({
           id: "route-line",
           type: "line",
           source: "route",
-          layout: { "line-cap": "round", "line-join": "round" },
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
           paint: {
             "line-color": "#0f62fe",
             "line-width": 5,
@@ -113,13 +138,13 @@ export default function MapLibreMap({
           },
         });
       } catch (err) {
-        console.error("❌ Failed to fetch route from ORS:", err);
-        toast.error("Route fetch failed. Please check your ORS API key.");
+        console.error("❌ Route fetch failed:", err);
+        toast.error("Route fetch failed. Check API key or coordinates.");
       }
     };
 
     fetchRoute();
-  }, [pickupCoords, dropoffCoords]);
+  }, [pickupCoords, dropoffCoords, setDistanceKm]);
 
   return (
     <div
@@ -129,6 +154,10 @@ export default function MapLibreMap({
         height: "100%",
         minHeight: "400px",
         flexGrow: 1,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        zIndex: 1,
       }}
     />
   );

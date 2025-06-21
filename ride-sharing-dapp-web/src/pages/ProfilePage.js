@@ -12,7 +12,7 @@ import {
 import { toast } from "react-toastify";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import PersonIcon from "@mui/icons-material/Person";
-import { useUser } from "../components/UserContext"; // adjust the path if needed
+import { useUser } from "../components/UserContext"; // adjust path if needed
 
 export default function ProfilePage() {
   const { user, setUser } = useUser();
@@ -49,13 +49,14 @@ export default function ProfilePage() {
 
     const updatedUser = { ...user, currentRole: nextRole, role: nextRole };
     setUser(updatedUser);
+    // Update localStorage for future logins and Google login
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("registeredUser", JSON.stringify(updatedUser));
     toast.success(`Switched to ${nextRole} role`);
-    // Optionally redirect:
-    // if (nextRole === "Driver") window.location.href = "/driver";
-    // else if (nextRole === "Passenger") window.location.href = "/passenger";
+    // Optionally redirect here if you want
   };
 
-  // Add driver role
+  // Add driver role, update context & localStorage
   const handleBecomeDriver = () => {
     if (user.roles.includes("Driver")) return;
     const updatedRoles = [...user.roles, "Driver"];
@@ -66,13 +67,15 @@ export default function ProfilePage() {
       role: "Driver",
     };
     setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("registeredUser", JSON.stringify(updatedUser));
     toast.success("You are now a driver! Complete your driver registration.");
     setTimeout(() => {
       window.location.href = "/driver-registration";
     }, 600);
   };
 
-  // Add passenger role
+  // Add passenger role, update context & localStorage
   const handleBecomePassenger = () => {
     if (user.roles.includes("Passenger")) return;
     const updatedRoles = [...user.roles, "Passenger"];
@@ -83,6 +86,8 @@ export default function ProfilePage() {
       role: "Passenger",
     };
     setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("registeredUser", JSON.stringify(updatedUser));
     toast.success("You are now a passenger!");
     setTimeout(() => {
       window.location.href = "/passenger";

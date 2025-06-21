@@ -5,12 +5,14 @@ import {
   Typography,
   ToggleButtonGroup,
   ToggleButton,
-  Button,
   Box,
 } from "@mui/material";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import TwoWheelerIcon from "@mui/icons-material/TwoWheeler";
 import EmojiPeopleIcon from "@mui/icons-material/EmojiPeople";
+
+// Import the styled ConfirmRideButton from PassengerDashboard
+import { ConfirmRideButton } from "../pages/PassengerDashboard";
 
 const VehicleSelectionPanel = ({
   rideType,
@@ -20,24 +22,21 @@ const VehicleSelectionPanel = ({
   onConfirmRide,
   fare,
   eta,
+  disabled,
 }) => {
   return (
     <Card
       sx={{
-        width: { xs: "100%", sm: 400 },
-        position: "absolute",
-        bottom: 80,
-        left: 60,
-        zIndex: 1000,
+        width: "100%", // Parent controls actual width
         boxShadow: 4,
         borderRadius: 2,
         bgcolor: "white",
       }}
     >
       <CardContent>
-        <Typography variant="h6" gutterBottom>
+        {/* <Typography variant="h6" gutterBottom>
           Select Vehicle & Ride Type
-        </Typography>
+        </Typography> */}
 
         <Typography variant="subtitle2" gutterBottom>
           Vehicle Type
@@ -83,15 +82,13 @@ const VehicleSelectionPanel = ({
           </Typography>
         </Box>
 
-        <Button
+        <ConfirmRideButton
           fullWidth
-          variant="contained"
-          color="primary"
-          sx={{ mt: 2 }}
           onClick={onConfirmRide}
+          disabled={disabled}
         >
           Confirm Ride
-        </Button>
+        </ConfirmRideButton>
       </CardContent>
     </Card>
   );

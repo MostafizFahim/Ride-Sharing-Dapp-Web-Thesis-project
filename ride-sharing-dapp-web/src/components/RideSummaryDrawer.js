@@ -1,6 +1,16 @@
 import React from "react";
-import { Card, CardContent, Box, Typography, Divider } from "@mui/material";
+import {
+  Card,
+  CardContent,
+  Box,
+  Typography,
+  Divider,
+  Stack,
+} from "@mui/material";
 import DriveEtaIcon from "@mui/icons-material/DriveEta";
+import RoomIcon from "@mui/icons-material/Room";
+import DirectionsIcon from "@mui/icons-material/Directions";
+import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
 
 const RideSummaryDrawer = ({
   pickup,
@@ -23,39 +33,100 @@ const RideSummaryDrawer = ({
       : dropoff || "Not selected";
 
   return (
-    <Card elevation={1} sx={{ borderRadius: 2 }}>
-      <CardContent sx={{ px: 3, py: 2 }}>
-        <Box display="flex" alignItems="center" gap={2} mb={1}>
-          <DriveEtaIcon color="primary" />
-          <Typography variant="h6">Ride Summary</Typography>
-        </Box>
-        <Divider sx={{ mb: 2 }} />
+    <Card
+      elevation={3}
+      sx={{
+        borderRadius: 3,
+        bgcolor: "rgba(255, 255, 255, 0.7)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.2)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          px: 3,
+          py: 1.5,
+          background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
+          color: "white",
+        }}
+      >
+        <DriveEtaIcon />
+        <Typography variant="subtitle1" fontWeight={600}>
+          Ride Summary
+        </Typography>
+      </Box>
 
-        <Typography>
-          <strong>From:</strong> {pickupText}
-        </Typography>
-        <Typography>
-          <strong>To:</strong> {dropoffText}
-        </Typography>
-        <Typography>
-          <strong>Ride Type:</strong> {rideType || "Not selected"}
-        </Typography>
-        <Typography>
-          <strong>Vehicle:</strong> {vehicleType || "Not selected"}
-        </Typography>
-        <Typography>
-          <strong>Distance:</strong>{" "}
-          {distanceKm && !isNaN(distanceKm)
-            ? `${Number(distanceKm).toFixed(2)} km`
-            : "--"}
-        </Typography>
-        <Typography>
-          <strong>ETA:</strong> {eta || "--"}
-        </Typography>
-        <Typography>
-          <strong>Estimated Fare:</strong>{" "}
-          {fare && !isNaN(fare) ? `$${fare}` : "--"}
-        </Typography>
+      <CardContent sx={{ px: 3, py: 2 }}>
+        <Stack spacing={1.5}>
+          {/* Pickup & Dropoff */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <RoomIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Pickup:</strong> {pickupText}
+            </Typography>
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={1}>
+            <RoomIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Dropoff:</strong> {dropoffText}
+            </Typography>
+          </Box>
+
+          <Divider />
+
+          {/* Ride Details */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <DirectionsIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Ride Type:</strong> {rideType || "Not selected"}
+            </Typography>
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={1}>
+            <DirectionsIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Vehicle:</strong> {vehicleType || "Not selected"}
+            </Typography>
+          </Box>
+
+          <Divider />
+
+          {/* Distance & ETA */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <DirectionsIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Distance:</strong>{" "}
+              {distanceKm && !isNaN(distanceKm)
+                ? `${Number(distanceKm).toFixed(2)} km`
+                : "--"}
+            </Typography>
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={1}>
+            <DirectionsIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>ETA:</strong> {eta || "--"}
+            </Typography>
+          </Box>
+
+          <Divider />
+
+          {/* Fare */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <MonetizationOnIcon color="action" fontSize="small" />
+            <Typography variant="body2">
+              <strong>Estimated Fare:</strong>{" "}
+              {fare && !isNaN(fare) ? `$${fare}` : "--"}
+            </Typography>
+          </Box>
+        </Stack>
       </CardContent>
     </Card>
   );

@@ -6,7 +6,6 @@ import {
   IconButton,
   Divider,
   Chip,
-  Button,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import axios from "axios";
@@ -22,13 +21,12 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { styled } from "@mui/material/styles";
 
+import MapLibreMap from "../components/MapLibreMap";
 import LocationInputPanel from "../components/LocationInputPanel";
 import RideSummaryDrawer from "../components/RideSummaryDrawer";
 import VehicleSelectionPanel from "../components/VehicleSelectionPanel";
 import fareRates from "../config/fareConfig";
-import MapLibreMap from "../components/MapLibreMap";
 
-// ---- Styled UI Components ----
 const ColorfulPaper = styled(Paper)(({ theme }) => ({
   background: "linear-gradient(145deg, #ffffff, #f5f9ff)",
   border: "1px solid rgba(145, 158, 171, 0.12)",
@@ -46,23 +44,8 @@ const GradientButton = styled(IconButton)(({ theme }) => ({
   },
 }));
 
-export const ConfirmRideButton = styled(Button)(({ theme }) => ({
-  background: "linear-gradient(45deg, #3a7bd5, #00d2ff)",
-  color: "white",
-  fontWeight: "bold",
-  fontSize: "1rem",
-  borderRadius: "8px",
-  padding: theme.spacing(1.5),
-  marginTop: theme.spacing(2),
-  textTransform: "none",
-  boxShadow: "0px 4px 15px rgba(58, 123, 213, 0.4)",
-  "&:hover": {
-    background: "linear-gradient(45deg, #00d2ff, #3a7bd5)",
-  },
-}));
-
-// ---- Main Component ----
 const PassengerDashboard = () => {
+  // ...same useState hooks as before...
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
   const [pickupCoords, setPickupCoords] = useState(null);
@@ -80,6 +63,7 @@ const PassengerDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Center map on current location on mount
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
@@ -106,6 +90,7 @@ const PassengerDashboard = () => {
     }
   }, [pickupCoords, dropoffCoords]);
 
+  // --- Place swap functionality here ---
   const swapLocations = () => {
     if (!pickup || !dropoff) return;
     const tempLabel = pickup;
@@ -131,7 +116,7 @@ const PassengerDashboard = () => {
           coords: feature.geometry.coordinates,
         })) || [];
       setOptions(options);
-    } catch {
+    } catch (err) {
       setOptions([]);
     }
   };
@@ -251,13 +236,15 @@ const PassengerDashboard = () => {
           "radial-gradient(circle at center, #f5f9ff 0%, #e3eafd 100%)",
       }}
     >
+      {/* MAP - Add colorful tiles option */}
       <MapLibreMap
         pickupCoords={pickupCoords}
         dropoffCoords={dropoffCoords}
         setDistanceKm={setDistanceKm}
+        mapStyle="https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json"
       />
 
-      {/* Location Panel */}
+      {/* FLOATING PICKUP/DROPOFF PANEL - Enhanced with gradient */}
       <Box
         component={motion.div}
         initial={{ opacity: 0, y: -30 }}
@@ -266,7 +253,7 @@ const PassengerDashboard = () => {
         sx={{
           position: "absolute",
           top: 20,
-          left: { xs: 10, md: 20 },
+          left: { xs: 10, md: 60 },
           width: { xs: "95vw", sm: 410, md: 450 },
           zIndex: 1100,
         }}
@@ -302,7 +289,11 @@ const PassengerDashboard = () => {
 
           <Box sx={{ p: 2.5 }}>
             <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <GradientButton onClick={swapLocations} size="small">
+              <GradientButton
+                onClick={swapLocations}
+                size="small"
+                title="Swap Pickup & Dropoff"
+              >
                 <SwapVertIcon fontSize="small" />
               </GradientButton>
               <GradientButton
@@ -317,6 +308,7 @@ const PassengerDashboard = () => {
                   }
                 }}
                 size="small"
+                title="Use My Location"
               >
                 <MyLocationIcon fontSize="small" />
               </GradientButton>
@@ -370,98 +362,79 @@ const PassengerDashboard = () => {
         </ColorfulPaper>
       </Box>
 
+      {/* VEHICLE SELECTION PANEL - Enhanced with card styling */}
       <AnimatePresence>
         {locationsSelected && (
-          <Box
-            sx={{
+          <motion.div
+            initial={{ opacity: 0, x: 60 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 60 }}
+            transition={{ duration: 0.35 }}
+            style={{
               position: "absolute",
-              bottom: 40,
               right: 30,
-              width: 360,
-              maxWidth: "90vw",
+              bottom: 100,
               zIndex: 1200,
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              borderRadius: 4,
-              backgroundColor: "rgba(255, 255, 255, 0.05)",
-              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
+              width: 340,
+              maxWidth: "90vw",
             }}
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              <ColorfulPaper elevation={4}>
-                <Box
-                  sx={{
-                    p: 2,
-                    background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
-                    color: "white",
-                    borderTopLeftRadius: "18px",
-                    borderTopRightRadius: "18px",
-                  }}
-                >
-                  <Typography fontWeight={600}>
-                    <RideTypeIcon sx={{ verticalAlign: "middle", mr: 1 }} />
-                    Select Vehicle & Ride Type
-                  </Typography>
-                </Box>
-                <Box sx={{ p: 2 }}>
-                  <VehicleSelectionPanel
-                    rideType={rideType}
-                    onRideTypeChange={setRideType}
-                    vehicleType={vehicleType}
-                    onVehicleTypeChange={setVehicleType}
-                    fare={fare}
-                    eta={eta}
-                    surgeMultiplier={surgeMultiplier}
-                    onConfirmRide={handleConfirmRide}
-                    disabled={!selectionsValid}
-                  />
-                </Box>
-              </ColorfulPaper>
-            </motion.div>
-          </Box>
+            <ColorfulPaper elevation={0}>
+              <Box
+                sx={{
+                  p: 2,
+                  background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
+                  color: "white",
+                  borderTopLeftRadius: 8,
+                  borderTopRightRadius: 8,
+                }}
+              >
+                <Typography fontWeight={600}>
+                  <RideTypeIcon sx={{ verticalAlign: "middle", mr: 1 }} />
+                  Select Vehicle
+                </Typography>
+              </Box>
+              <Box sx={{ p: 2 }}>
+                <VehicleSelectionPanel
+                  rideType={rideType}
+                  onRideTypeChange={setRideType}
+                  vehicleType={vehicleType}
+                  onVehicleTypeChange={setVehicleType}
+                  fare={fare}
+                  eta={eta}
+                  surgeMultiplier={surgeMultiplier}
+                  onConfirmRide={handleConfirmRide}
+                  disabled={!selectionsValid}
+                />
+              </Box>
+            </ColorfulPaper>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* RIDE SUMMARY - Bottom Left */}
+      {/* SUMMARY DRAWER - Enhanced with gradient */}
       <Box
         sx={{
           position: "absolute",
           bottom: 20,
-          left: 20,
-          width: { xs: "95vw", sm: 450 },
+          right: 20,
+          width: { xs: "95vw", sm: 380 },
           zIndex: 1100,
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          backgroundColor: "rgba(255, 255, 255, 0.08)",
-          borderRadius: 4,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
         }}
       >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.92 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-        >
-          <ColorfulPaper elevation={3}>
-            <RideSummaryDrawer
-              pickup={pickup}
-              dropoff={dropoff}
-              rideType={rideType}
-              vehicleType={vehicleType}
-              distanceKm={distanceKm}
-              eta={eta}
-              fare={fare}
-              onConfirmRide={handleConfirmRide}
-              disabled={!selectionsValid}
-            />
-          </ColorfulPaper>
-        </motion.div>
+        <ColorfulPaper>
+          <RideSummaryDrawer
+            pickup={pickup}
+            dropoff={dropoff}
+            rideType={rideType}
+            vehicleType={vehicleType}
+            distanceKm={distanceKm}
+            eta={eta}
+            fare={fare}
+            onConfirmRide={handleConfirmRide}
+            disabled={!selectionsValid}
+          />
+        </ColorfulPaper>
       </Box>
     </Box>
   );
