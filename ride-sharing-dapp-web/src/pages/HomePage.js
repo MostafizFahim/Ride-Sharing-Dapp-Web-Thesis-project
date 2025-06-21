@@ -25,6 +25,7 @@ import GitHubIcon from "@mui/icons-material/GitHub";
 import { motion } from "framer-motion";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import { useUser } from "../components/UserContext"; // adjust path if needed
 
 const fadeIn = {
   hidden: { opacity: 0, y: 30 },
@@ -77,7 +78,8 @@ const developers = [
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+  const { user } = useUser();
+
   const currentRole = user?.currentRole || user?.role || "Passenger";
   const roles = user?.roles || [user?.role || "Passenger"];
 

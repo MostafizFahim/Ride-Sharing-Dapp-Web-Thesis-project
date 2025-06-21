@@ -7,7 +7,6 @@ import {
   CardContent,
   Divider,
   Button,
-  Switch,
   Stepper,
   Step,
   StepLabel,
@@ -15,7 +14,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
   ListItemIcon,
   Chip,
   Drawer,
@@ -52,16 +50,11 @@ import {
   Email,
   AttachMoney,
 } from "@mui/icons-material";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-} from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import FlagIcon from "@mui/icons-material/Flag";
+import { useUser } from "../components/UserContext"; // Context
 
 // Icons
 const driverIcon = new L.Icon({
@@ -75,11 +68,11 @@ const passengerIcon = new L.Icon({
 const RIDE_OFFER_TIMEOUT = 15;
 
 export default function DriverDashboard() {
-  // === Real Driver Info (from Registration) ===
-  const driver =
-    JSON.parse(localStorage.getItem("user")) ||
-    JSON.parse(localStorage.getItem("registeredUser")) ||
-    {};
+  // === Context User ===
+  const { user, setUser } = useUser();
+
+  // Defensive fallback (if user logs out mid-session)
+  const driver = user || {};
 
   const profileName = driver.fullName || driver.name || "Driver";
   const profileEmail = driver.email || "-";
@@ -140,17 +133,14 @@ export default function DriverDashboard() {
   // === Simulate/Listen for Incoming Ride Requests ===
   useEffect(() => {
     if (!isOnline) return;
-    // If not in a ride, check if a passenger ride is waiting in localStorage
     if (rideStatus === "idle") {
       const passengerRide = JSON.parse(localStorage.getItem("currentRide"));
       const rideState = localStorage.getItem("rideStatus");
-      // If a new ride request is waiting for a driver
       if (
         passengerRide &&
         rideState === "searching" &&
         !passengerRide.driverAccepted
       ) {
-        // Show this real ride to the driver as an offer
         setRideOffer(passengerRide);
         setShowOfferModal(true);
         setOfferTimer(RIDE_OFFER_TIMEOUT);
@@ -226,7 +216,6 @@ export default function DriverDashboard() {
   function nextRideStep() {
     if (rideStep < 3) {
       setRideStep(rideStep + 1);
-      // Step transitions
       if (rideStep === 0) setRideStatus("arrived");
       if (rideStep === 1) setRideStatus("in_progress");
       if (rideStep === 2) {
@@ -237,7 +226,6 @@ export default function DriverDashboard() {
   }
 
   function finishRide() {
-    // Save to history, update earnings
     const finishedRide = {
       ...rideData,
       date: new Date().toISOString(),
@@ -250,7 +238,6 @@ export default function DriverDashboard() {
       (parseFloat(driverEarnings) || 0) + (rideData?.fare || 0);
     setDriverEarnings(newEarnings);
     localStorage.setItem("driverEarnings", newEarnings);
-    // Reset states
     setRideData(null);
     setRideStatus("idle");
     setRideStep(0);
@@ -258,7 +245,7 @@ export default function DriverDashboard() {
     setPassengerRating(null);
   }
 
-  // === Sidebar: Always Shows Real Driver Info ===
+  // === Sidebar (uses context for log out) ===
   const Sidebar = (
     <Drawer
       variant="permanent"
@@ -348,6 +335,7 @@ export default function DriverDashboard() {
         <ListItem
           button
           onClick={() => {
+            setUser(null);
             localStorage.removeItem("user");
             window.location.href = "/login";
           }}
@@ -436,7 +424,6 @@ export default function DriverDashboard() {
 
   // === Renders all main dashboard content by activeTab ===
   function renderContent() {
-    // === Dashboard/Online/Incoming Ride Request UI ===
     if (activeTab === "dashboard") {
       return (
         <Box>
@@ -459,7 +446,6 @@ export default function DriverDashboard() {
                   <Popup>My Position</Popup>
                 </Marker>
               )}
-              {/* You can add more markers, e.g. pickup/dropoff, as needed */}
             </MapContainer>
           </Box>
           <Button
@@ -476,7 +462,6 @@ export default function DriverDashboard() {
             sx={{ ml: 1 }}
           />
           <Divider sx={{ my: 3 }} />
-          {/* === Show ride progress if in a ride === */}
           {rideData && rideStatus !== "idle" && (
             <Card sx={{ maxWidth: 600, mx: "auto", mt: 2 }}>
               <CardContent>

@@ -15,7 +15,7 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { UserContext } from "./UserContext"; // adjust path if needed
+import { UserContext } from "./UserContext";
 
 export default function NavBar() {
   const { user, setUser } = useContext(UserContext);
@@ -29,6 +29,7 @@ export default function NavBar() {
   // LOGOUT clears both context and localStorage
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem("user");
     toast.info("Logged out successfully");
     navigate("/login");
   };
@@ -49,16 +50,16 @@ export default function NavBar() {
   // Handles switching role in user context
   const handleSwitchRole = () => {
     if (!isLoggedIn) return;
-    if (roles.includes("Driver") && roles.includes("Passenger")) {
-      const newRole = currentRole === "Driver" ? "Passenger" : "Driver";
-      setUser({ ...user, currentRole: newRole });
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...user, currentRole: newRole })
-      ); // ADD THIS LINE
+    // Allow dynamic switching if more than one role present
+    const availableRoles = roles.filter((r) => r !== currentRole);
+    if (availableRoles.length > 0) {
+      const newRole = availableRoles[0]; // Switch to the next role available
+      const updatedUser = { ...user, currentRole: newRole };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
       toast.success(`Switched to ${newRole} mode`);
       handleRoleNav(newRole);
-    } else if (roles.includes("Passenger") && !roles.includes("Driver")) {
+    } else if (roles.includes("Passenger")) {
       toast.info("Register as a driver to enable driver mode.");
       navigate("/driver-registration");
     } else {
@@ -159,15 +160,16 @@ export default function NavBar() {
               Ride In Progress
             </MenuItem>
             {/* Role Switch Option */}
-            {isLoggedIn && roles.includes("Passenger") && (
+            {isLoggedIn && roles.length > 1 && (
               <MenuItem onClick={handleSwitchRole}>
-                {roles.includes("Driver")
-                  ? currentRole === "Passenger"
-                    ? "Switch to Driver"
-                    : "Switch to Passenger"
-                  : "Become a Driver"}
+                Switch to {roles.filter((r) => r !== currentRole)[0]}
               </MenuItem>
             )}
+            {isLoggedIn &&
+              roles.length === 1 &&
+              roles.includes("Passenger") && (
+                <MenuItem onClick={handleSwitchRole}>Become a Driver</MenuItem>
+              )}
             <MenuItem
               onClick={() => {
                 navigate("/driver-registration");

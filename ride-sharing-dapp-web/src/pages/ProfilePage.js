@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   Container,
   Typography,
@@ -12,27 +12,30 @@ import {
 import { toast } from "react-toastify";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import PersonIcon from "@mui/icons-material/Person";
+import { useUser } from "../components/UserContext"; // adjust the path if needed
 
 export default function ProfilePage() {
-  const [user, setUser] = useState({
-    name: "Guest User",
-    email: "guest@example.com",
-    currentRole: "Passenger",
-    roles: ["Passenger"],
-    picture: "",
-  });
+  const { user, setUser } = useUser();
 
-  useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    if (storedUser) {
-      setUser(storedUser);
-    }
-  }, []);
+  if (!user) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 4 }}>
+        <Paper
+          elevation={3}
+          sx={{ p: 4, borderRadius: 3, textAlign: "center" }}
+        >
+          <Typography variant="h5">You are not logged in.</Typography>
+          <Typography variant="subtitle1" color="text.secondary" sx={{ mt: 2 }}>
+            Please <a href="/login">log in</a> to view your profile.
+          </Typography>
+        </Paper>
+      </Container>
+    );
+  }
 
   // Switch between Passenger/Driver/Admin if user has more than one role
   const handleSwitchRole = () => {
     if (!user.roles || user.roles.length < 2) return;
-
     let nextRole;
     if (user.currentRole === "Passenger" && user.roles.includes("Driver"))
       nextRole = "Driver";
@@ -45,24 +48,23 @@ export default function ProfilePage() {
         user.roles.find((r) => r !== user.currentRole) || user.currentRole;
 
     const updatedUser = { ...user, currentRole: nextRole, role: nextRole };
-    localStorage.setItem("user", JSON.stringify(updatedUser));
     setUser(updatedUser);
     toast.success(`Switched to ${nextRole} role`);
-    // Optional redirect:
+    // Optionally redirect:
     // if (nextRole === "Driver") window.location.href = "/driver";
     // else if (nextRole === "Passenger") window.location.href = "/passenger";
   };
 
   // Add driver role
   const handleBecomeDriver = () => {
-    const updatedRoles = [...(user.roles || []), "Driver"];
+    if (user.roles.includes("Driver")) return;
+    const updatedRoles = [...user.roles, "Driver"];
     const updatedUser = {
       ...user,
       roles: updatedRoles,
       currentRole: "Driver",
       role: "Driver",
     };
-    localStorage.setItem("user", JSON.stringify(updatedUser));
     setUser(updatedUser);
     toast.success("You are now a driver! Complete your driver registration.");
     setTimeout(() => {
@@ -72,14 +74,14 @@ export default function ProfilePage() {
 
   // Add passenger role
   const handleBecomePassenger = () => {
-    const updatedRoles = [...(user.roles || []), "Passenger"];
+    if (user.roles.includes("Passenger")) return;
+    const updatedRoles = [...user.roles, "Passenger"];
     const updatedUser = {
       ...user,
       roles: updatedRoles,
       currentRole: "Passenger",
       role: "Passenger",
     };
-    localStorage.setItem("user", JSON.stringify(updatedUser));
     setUser(updatedUser);
     toast.success("You are now a passenger!");
     setTimeout(() => {

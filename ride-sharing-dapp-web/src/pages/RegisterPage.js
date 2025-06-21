@@ -15,6 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useTheme } from "@mui/material/styles";
+import { useUser } from "../components/UserContext"; // path as needed
 
 const mustangButtonStyle = {
   background: "linear-gradient(90deg, #3793e0 0%, #53a0fd 100%)",
@@ -36,6 +37,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { setUser } = useUser();
 
   const [form, setForm] = useState({
     fullName: "",
@@ -101,45 +103,34 @@ export default function RegisterPage() {
       return toast.error("Passwords do not match");
     }
 
-    // Convert image file to base64
     const reader = new FileReader();
     reader.onloadend = () => {
-      // --- Roles logic ---
-      // Everyone is a passenger by default, unless registering as Admin only.
-      let roles = [];
-      if (role === "Admin") {
-        roles = ["Admin"];
-      } else if (role === "Passenger") {
-        roles = ["Passenger"];
-      } else if (role === "Driver") {
-        // By default, most apps treat a driver as also a passenger!
-        roles = ["Passenger"];
-      }
-      const userData = {
+      const baseUser = {
         fullName,
         email,
         phone,
         dateOfBirth,
         gender,
         city,
-        roles, // <== Array of roles
-        currentRole: role, // <== Current role, as selected in form
         password,
         picture: reader.result,
+        roles: [role],
+        currentRole: role,
+        role,
       };
 
       if (role === "Driver") {
-        // Pass data to DriverRegistration, don't save as registered yet
+        // Forward to driver registration step
         navigate("/driver-registration", {
           state: {
-            driverBase: {
-              ...userData,
-            },
+            driverBase: baseUser,
           },
         });
       } else {
-        // For Passenger/Admin, save now
-        localStorage.setItem("registeredUser", JSON.stringify(userData));
+        // Passenger or Admin: register immediately
+        setUser(baseUser);
+        localStorage.setItem("user", JSON.stringify(baseUser));
+        localStorage.setItem("registeredUser", JSON.stringify(baseUser));
         toast.success("Registration successful. Please log in.");
         navigate("/login");
       }
