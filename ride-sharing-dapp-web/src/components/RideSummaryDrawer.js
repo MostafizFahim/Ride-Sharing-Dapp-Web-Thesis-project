@@ -11,6 +11,9 @@ import DriveEtaIcon from "@mui/icons-material/DriveEta";
 import RoomIcon from "@mui/icons-material/Room";
 import DirectionsIcon from "@mui/icons-material/Directions";
 import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
+import TimeIcon from "@mui/icons-material/Schedule";
+import LocationIcon from "@mui/icons-material/LocationOn";
+import CommuteIcon from "@mui/icons-material/Commute";
 
 const RideSummaryDrawer = ({
   pickup,
@@ -123,7 +126,9 @@ const RideSummaryDrawer = ({
             <MonetizationOnIcon color="action" fontSize="small" />
             <Typography variant="body2">
               <strong>Estimated Fare:</strong>{" "}
-              {fare && !isNaN(fare) ? `$${fare}` : "--"}
+              <Box component="span" sx={{ color: "green", fontWeight: "bold" }}>
+                {fare && fare !== "--" ? `৳${fare}` : "--"}
+              </Box>
             </Typography>
           </Box>
         </Stack>

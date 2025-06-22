@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Typography,
@@ -21,12 +21,14 @@ import {
 } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { styled } from "@mui/material/styles";
+import FlagIcon from "@mui/icons-material/Flag";
 
 import LocationInputPanel from "../components/LocationInputPanel";
 import RideSummaryDrawer from "../components/RideSummaryDrawer";
 import VehicleSelectionPanel from "../components/VehicleSelectionPanel";
 import fareRates from "../config/fareConfig";
 import MapLibreMap from "../components/MapLibreMap";
+import { reverseGeocode } from "../utils/geoUtils";
 
 // ---- Styled UI Components ----
 const ColorfulPaper = styled(Paper)(({ theme }) => ({
@@ -63,6 +65,9 @@ export const ConfirmRideButton = styled(Button)(({ theme }) => ({
 
 // ---- Main Component ----
 const PassengerDashboard = () => {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
   const [pickupCoords, setPickupCoords] = useState(null);
@@ -72,6 +77,8 @@ const PassengerDashboard = () => {
   const [rideType, setRideType] = useState("");
   const [vehicleType, setVehicleType] = useState("");
   const [distanceKm, setDistanceKm] = useState(null);
+  const [mapSelectMode, setMapSelectMode] = useState("dropoff"); // or "pickup"
+
   const [surgeMultiplier, setSurgeMultiplier] = useState(1.0);
   const [history, setHistory] = useState(
     JSON.parse(localStorage.getItem("rideHistory")) || []
@@ -105,6 +112,19 @@ const PassengerDashboard = () => {
       setSurgeMultiplier(1.0 + Math.random() * 0.5);
     }
   }, [pickupCoords, dropoffCoords]);
+
+  useEffect(() => {
+    window.setDropoffFromMap = async (coords) => {
+      setDropoffCoords(coords);
+      const [lng, lat] = coords;
+      const label = await reverseGeocode(lat, lng);
+      setDropoff(label);
+    };
+
+    return () => {
+      window.setDropoffFromMap = null; // Cleanup on unmount
+    };
+  }, []);
 
   const swapLocations = () => {
     if (!pickup || !dropoff) return;
@@ -157,6 +177,18 @@ const PassengerDashboard = () => {
       toast.error("Location lookup failed");
     }
   };
+  const reverseGeocode = async (lat, lon) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+      );
+      const data = await res.json();
+      return data.display_name || "Selected Location";
+    } catch (err) {
+      console.error("Reverse geocoding failed:", err);
+      return "Selected Location";
+    }
+  };
 
   const calculateFare = (distance) => {
     const numericDistance = parseFloat(distance);
@@ -166,6 +198,15 @@ const PassengerDashboard = () => {
     const minFare = 30.0;
     const raw = numericDistance * baseRate * surgeMultiplier;
     return Math.max(raw + flatFee, minFare).toFixed(2);
+  };
+  const handleMapClick = (coords) => {
+    setDropoffCoords(coords);
+    reverseGeocode(coords[1], coords[0]).then(setDropoff);
+  };
+
+  const handlePickupClick = (coords) => {
+    setPickupCoords(coords);
+    reverseGeocode(coords[1], coords[0]).then(setPickup); // label
   };
 
   const handleConfirmRide = () => {
@@ -252,10 +293,52 @@ const PassengerDashboard = () => {
       }}
     >
       <MapLibreMap
+        mapRef={mapRef}
         pickupCoords={pickupCoords}
         dropoffCoords={dropoffCoords}
         setDistanceKm={setDistanceKm}
+        onMapClick={handleMapClick}
+        onPickupMapClick={handlePickupClick}
+        mapSelectMode={mapSelectMode} // ✅ pass it
+        mapInstanceRef={mapInstanceRef}
       />
+      <Box
+        sx={{
+          position: "absolute",
+          top: 80,
+          right: 30,
+          zIndex: 1200,
+        }}
+      >
+        <Button
+          variant="contained"
+          onClick={() =>
+            setMapSelectMode((prev) =>
+              prev === "pickup" ? "dropoff" : "pickup"
+            )
+          }
+          sx={{
+            borderRadius: "8px",
+            background:
+              mapSelectMode === "pickup"
+                ? "linear-gradient(45deg, #43cea2, #185a9d)"
+                : "linear-gradient(45deg, #f7971e, #ffd200)",
+            color: "white",
+            fontWeight: "bold",
+            textTransform: "none",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
+            "&:hover": {
+              background:
+                mapSelectMode === "pickup"
+                  ? "linear-gradient(45deg, #185a9d, #43cea2)"
+                  : "linear-gradient(45deg, #ffd200, #f7971e)",
+            },
+          }}
+        >
+          🎯 Now Selecting:{" "}
+          {mapSelectMode === "pickup" ? "Pickup Location" : "Dropoff Location"}
+        </Button>
+      </Box>
 
       {/* Location Panel */}
       <Box
@@ -309,10 +392,23 @@ const PassengerDashboard = () => {
                 onClick={() => {
                   if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition((pos) => {
-                      setPickupCoords([
+                      const coords = [
                         pos.coords.longitude,
                         pos.coords.latitude,
-                      ]);
+                      ];
+                      setPickupCoords(coords);
+                      reverseGeocode(coords[1], coords[0]).then(setPickup);
+
+                      setTimeout(() => {
+                        if (mapInstanceRef.current && coords[0] && coords[1]) {
+                          mapInstanceRef.current.flyTo({
+                            center: coords,
+                            zoom: 15,
+                            speed: 1.2,
+                            curve: 1.42,
+                          });
+                        }
+                      }, 300); // Optional delay to ensure map is ready
                     });
                   }
                 }}
@@ -320,6 +416,11 @@ const PassengerDashboard = () => {
               >
                 <MyLocationIcon fontSize="small" />
               </GradientButton>
+
+              <GradientButton size="small">
+                <FlagIcon fontSize="small" color="secondary" />
+              </GradientButton>
+
               <Box sx={{ ml: "auto", display: "flex", alignItems: "center" }}>
                 {eta && (
                   <>
@@ -365,6 +466,8 @@ const PassengerDashboard = () => {
                   fetchCoordinates(val, setDropoff, setDropoffCoords);
                 }
               }}
+              aria-label-pickup="Pickup Location"
+              aria-label-dropoff="Dropoff Location"
             />
           </Box>
         </ColorfulPaper>
@@ -419,6 +522,7 @@ const PassengerDashboard = () => {
                     surgeMultiplier={surgeMultiplier}
                     onConfirmRide={handleConfirmRide}
                     disabled={!selectionsValid}
+                    aria-label="Vehicle and Ride Type Selection Panel"
                   />
                 </Box>
               </ColorfulPaper>
@@ -431,7 +535,7 @@ const PassengerDashboard = () => {
       <Box
         sx={{
           position: "absolute",
-          bottom: 20,
+          bottom: 5,
           left: 20,
           width: { xs: "95vw", sm: 450 },
           zIndex: 1100,

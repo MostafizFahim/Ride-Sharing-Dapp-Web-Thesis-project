@@ -40,36 +40,88 @@ export default function LoginPage() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  // const handleLogin = () => {
+  //   const registeredUser = JSON.parse(localStorage.getItem("registeredUser"));
+  //   if (
+  //     registeredUser &&
+  //     form.email === registeredUser.email &&
+  //     form.password === registeredUser.password
+  //   ) {
+  //     // Enrich with roles and currentRole for dual role support
+  //     const userToStore = {
+  //       ...registeredUser,
+  //       roles: registeredUser.roles || [registeredUser.role || "Passenger"],
+  //       currentRole:
+  //         registeredUser.currentRole || registeredUser.role || "Passenger",
+  //     };
+  //     setUser(userToStore); // Update context
+  //     toast.success("Login successful");
+
+  //     // Redirect by currentRole
+  //     const { currentRole } = userToStore;
+  //     if (currentRole === "Driver") {
+  //       navigate("/driver");
+  //     } else if (currentRole === "Passenger") {
+  //       navigate("/passenger");
+  //     } else if (currentRole === "Admin") {
+  //       navigate("/admin");
+  //     } else {
+  //       navigate("/");
+  //     }
+  //     return;
+  //   }
+  //   toast.error("Invalid email or password");
+  // };
   const handleLogin = () => {
+    const adminEmail = process.env.REACT_APP_ADMIN_EMAIL;
+    const adminPassword = process.env.REACT_APP_ADMIN_PASSWORD;
+
+    // 1. Check if it's admin
+    if (form.email === adminEmail && form.password === adminPassword) {
+      const adminUser = {
+        name: "Admin",
+        email: adminEmail,
+        role: "Admin",
+        roles: ["Admin"],
+        currentRole: "Admin",
+      };
+      setUser(adminUser);
+      localStorage.setItem("user", JSON.stringify(adminUser));
+      localStorage.setItem("registeredUser", JSON.stringify(adminUser));
+      toast.success("Logged in as Admin");
+      navigate("/admin");
+      return;
+    }
+
+    // 2. Check if it's a registered user
     const registeredUser = JSON.parse(localStorage.getItem("registeredUser"));
     if (
       registeredUser &&
       form.email === registeredUser.email &&
       form.password === registeredUser.password
     ) {
-      // Enrich with roles and currentRole for dual role support
       const userToStore = {
         ...registeredUser,
         roles: registeredUser.roles || [registeredUser.role || "Passenger"],
         currentRole:
           registeredUser.currentRole || registeredUser.role || "Passenger",
       };
-      setUser(userToStore); // Update context
+      setUser(userToStore);
+      localStorage.setItem("user", JSON.stringify(userToStore));
       toast.success("Login successful");
 
-      // Redirect by currentRole
       const { currentRole } = userToStore;
       if (currentRole === "Driver") {
         navigate("/driver");
       } else if (currentRole === "Passenger") {
         navigate("/passenger");
-      } else if (currentRole === "Admin") {
-        navigate("/admin");
       } else {
         navigate("/");
       }
       return;
     }
+
+    // 3. Fallback: invalid
     toast.error("Invalid email or password");
   };
 

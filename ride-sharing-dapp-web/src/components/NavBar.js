@@ -86,20 +86,51 @@ export default function NavBar() {
       >
         {/* Logo & Current Role */}
         <Box display="flex" alignItems="center" gap={2}>
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 900,
-              cursor: "pointer",
-              color: "#fff",
-              letterSpacing: 2,
-              fontSize: { xs: "1.1rem", md: "1.3rem" },
-              textShadow: "0 2px 8px rgba(30,40,100,0.2)",
-            }}
+          <Box
+            display="flex"
+            alignItems="center"
+            gap={2}
             onClick={() => navigate("/")}
+            sx={{ cursor: "pointer" }}
           >
-            NexTrip
-          </Typography>
+            <img
+              src="/logo123.png"
+              alt="NexTrip Logo"
+              style={{
+                width: "52px",
+                height: "52px",
+                borderRadius: "8px",
+                //backgroundColor: "#fff",
+                padding: "4px",
+              }}
+            />
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 900,
+                color: "#fff",
+                letterSpacing: 2,
+                fontSize: { xs: "1.1rem", md: "1.3rem" },
+                textShadow: "0 2px 8px rgba(30,40,100,0.2)",
+              }}
+            >
+              NexTrip
+            </Typography>
+            {/* {isLoggedIn && (
+              <Chip
+                label={currentRole}
+                color={currentRole === "Driver" ? "info" : "primary"}
+                size="small"
+                sx={{
+                  ml: 1,
+                  color: "#fff",
+                  fontWeight: 700,
+                  bgcolor: "#3793e0",
+                }}
+              />
+            )} */}
+          </Box>
+
           {isLoggedIn && (
             <Chip
               label={currentRole}
