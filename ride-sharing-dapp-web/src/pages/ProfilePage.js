@@ -19,7 +19,6 @@ import { toast } from "react-toastify";
 import {
   DirectionsCar as DirectionsCarIcon,
   Person as PersonIcon,
-  SwapHoriz as SwitchRoleIcon,
   MonetizationOn as MoneyIcon,
   LocalTaxi as RideIcon,
   Star as StarIcon,
@@ -75,29 +74,77 @@ const GradientButton = styled(Button)(({ theme }) => ({
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-
   const theme = useTheme();
   const { user, setUser } = useUser();
   const [stats, setStats] = useState({ rides: 0, total: 0 });
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(
+    JSON.parse(localStorage.getItem("darkMode")) || false
+  );
   const [recentRides, setRecentRides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [safetyScore, setSafetyScore] = useState(0);
+
+  // Validate user data structure
+  const validateUserData = (userData) => {
+    if (!userData || typeof userData !== "object") return false;
+    return ["name", "email", "currentRole", "roles"].every(
+      (field) => field in userData
+    );
+  };
+
+  // Calculate safety score for drivers
+  const calculateSafetyScore = (driverHistory) => {
+    const totalRides = driverHistory.length;
+    if (totalRides === 0) return 0;
+
+    const safeRides = driverHistory.filter(
+      (ride) => ride.safetyRating && ride.safetyRating >= 4
+    ).length;
+    return Math.round((safeRides / totalRides) * 100);
+  };
+
+  // Get ride history with error handling
+  const getRideHistory = (key) => {
+    try {
+      return JSON.parse(localStorage.getItem(key)) || [];
+    } catch (e) {
+      console.error(`Failed to parse ${key}`, e);
+      return [];
+    }
+  };
+
+  // Calculate total fares safely
+  const calculateTotal = (rides) => {
+    return rides.reduce((sum, ride) => {
+      try {
+        const fare = parseFloat(ride.fare) || 0;
+        return sum + fare;
+      } catch (e) {
+        console.error("Invalid fare format:", ride.fare);
+        return sum;
+      }
+    }, 0);
+  };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const passengerHistory =
-      JSON.parse(localStorage.getItem("rideHistory")) || [];
-    const driverHistory =
-      JSON.parse(localStorage.getItem("driverHistory")) || [];
+    if (!validateUserData(user)) {
+      console.error("Invalid user data structure");
+      navigate("/login");
+      return;
+    }
+
+    setLoading(true);
+
+    const passengerHistory = getRideHistory("rideHistory");
+    const driverHistory = getRideHistory("driverHistory");
+
     setRecentRides(passengerHistory.slice(0, 3));
-
-    const calculateTotal = (rides) => {
-      return rides.reduce((sum, ride) => {
-        const fare =
-          parseFloat(ride.fare?.toString().replace(/[^\d.-]/g, "")) || 0;
-        return sum + fare;
-      }, 0);
-    };
+    setSafetyScore(calculateSafetyScore(driverHistory));
 
     if (user.currentRole === "Passenger") {
       setStats({
@@ -110,23 +157,79 @@ export default function ProfilePage() {
         rides: driverHistory.length,
         total: calculateTotal(driverHistory),
       });
+      if (driverHistory.length >= 10) triggerConfetti();
     }
-  }, [user]);
+
+    setLoading(false);
+  }, [user, navigate]);
 
   const triggerConfetti = () => {
     toast.success("🎉 Congratulations on reaching 10+ rides!");
   };
 
   const handleSwitchRole = () => {
-    if (!user.roles || user.roles.length < 2) return;
+    if (!user?.roles || user.roles.length < 2) {
+      toast.warning("You only have one role assigned");
+      return;
+    }
+
     const nextRole = user.currentRole === "Passenger" ? "Driver" : "Passenger";
+    if (!user.roles.includes(nextRole)) {
+      toast.error(`You don't have ${nextRole} role access`);
+      return;
+    }
+
     const updatedUser = { ...user, currentRole: nextRole };
     setUser(updatedUser);
     localStorage.setItem("user", JSON.stringify(updatedUser));
     toast.success(`Switched to ${nextRole} mode`);
+    navigate(`/${nextRole.toLowerCase()}`);
   };
 
-  const toggleDarkMode = () => setDarkMode(!darkMode);
+  const handleBecomeDriver = () => {
+    if (user.roles.includes("Driver")) {
+      toast.info("You already have Driver access");
+      return;
+    }
+
+    // In a real app, this would involve backend verification
+    const updatedUser = {
+      ...user,
+      roles: [...user.roles, "Driver"],
+      currentRole: "Driver",
+    };
+
+    setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    toast.success("Driver mode activated! Verification pending.");
+    navigate("/driver");
+  };
+
+  const handleBecomePassenger = () => {
+    if (user.roles.includes("Passenger")) {
+      toast.info("You already have Passenger access");
+      return;
+    }
+
+    const updatedUser = {
+      ...user,
+      roles: [...user.roles, "Passenger"],
+      currentRole: "Passenger",
+    };
+
+    setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    toast.success("Passenger mode activated!");
+    navigate("/passenger");
+  };
+
+  const toggleDarkMode = () => {
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    localStorage.setItem("darkMode", JSON.stringify(newMode));
+    // Implement theme switching logic in your theme provider
+    toast.info(`Dark mode ${newMode ? "enabled" : "disabled"}`);
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -157,6 +260,17 @@ export default function ProfilePage() {
             to view your profile
           </Typography>
         </GradientPaper>
+      </Container>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Container
+        maxWidth="sm"
+        sx={{ mt: 4, display: "flex", justifyContent: "center" }}
+      >
+        <CircularProgress />
       </Container>
     );
   }
@@ -232,26 +346,8 @@ export default function ProfilePage() {
               }
               onClick={
                 user.currentRole === "Passenger"
-                  ? () => {
-                      const updatedUser = {
-                        ...user,
-                        roles: [...user.roles, "Driver"],
-                        currentRole: "Driver",
-                      };
-                      setUser(updatedUser);
-                      localStorage.setItem("user", JSON.stringify(updatedUser));
-                      toast.success("Driver mode activated!");
-                    }
-                  : () => {
-                      const updatedUser = {
-                        ...user,
-                        roles: [...user.roles, "Passenger"],
-                        currentRole: "Passenger",
-                      };
-                      setUser(updatedUser);
-                      localStorage.setItem("user", JSON.stringify(updatedUser));
-                      toast.success("Passenger mode activated!");
-                    }
+                  ? handleBecomeDriver
+                  : handleBecomePassenger
               }
               sx={{
                 background:
@@ -287,7 +383,7 @@ export default function ProfilePage() {
               {stats.rides > 0 && (
                 <LinearProgress
                   variant="determinate"
-                  value={(stats.rides / 10) * 100}
+                  value={Math.min((stats.rides / 10) * 100, 100)}
                   sx={{ height: 8, borderRadius: 4, mt: 2 }}
                 />
               )}
@@ -315,10 +411,17 @@ export default function ProfilePage() {
             <Box sx={{ position: "relative", display: "inline-flex" }}>
               <CircularProgress
                 variant="determinate"
-                value={85}
+                value={safetyScore}
                 size={80}
                 thickness={6}
-                sx={{ color: "#4caf50" }}
+                sx={{
+                  color:
+                    safetyScore > 75
+                      ? "#4caf50"
+                      : safetyScore > 50
+                      ? "#ff9800"
+                      : "#f44336",
+                }}
               />
               <Box
                 sx={{
@@ -329,7 +432,7 @@ export default function ProfilePage() {
                   justifyContent: "center",
                 }}
               >
-                <Typography variant="h6">85%</Typography>
+                <Typography variant="h6">{safetyScore}%</Typography>
               </Box>
             </Box>
           </StatCard>
@@ -352,47 +455,6 @@ export default function ProfilePage() {
             )}
           </Box>
         </Paper>
-
-        {/* Recent Activity Section - Fixed
-        <Paper sx={{ p: 2, mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Recent Activity
-          </Typography>
-          {recentRides.length > 0 ? (
-            recentRides.map((ride, index) => (
-              <Box
-                key={index}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                  py: 1,
-                  borderBottom: "1px solid rgba(0,0,0,0.05)",
-                }}
-              >
-                <ScheduleIcon color="action" />
-                <Box sx={{ flexGrow: 1 }}>
-                  <Typography>
-                    {ride.pickup} → {ride.dropoff}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(ride.timestamp).toLocaleString()}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={`৳${
-                    typeof ride.fare === "number"
-                      ? ride.fare.toFixed(2)
-                      : "0.00"
-                  }`}
-                  size="small"
-                />
-              </Box>
-            ))
-          ) : (
-            <Typography color="text.secondary">No recent activity</Typography>
-          )}
-        </Paper> */}
 
         {/* Referral Button */}
         <Button

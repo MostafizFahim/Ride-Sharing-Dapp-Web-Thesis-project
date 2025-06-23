@@ -264,11 +264,12 @@ export default function DriverDashboard() {
         "& .MuiDrawer-paper": {
           width: 280,
           boxSizing: "border-box",
-          position: "fixed", // ✅ fix position
-          top: 68, // ✅ offset equal to AppBar height
-          height: "calc(100% - 64px)", // ✅ remaining vertical space
-          bgcolor: "background.paper",
-          borderRight: "1px solid rgba(0, 0, 0, 0.12)",
+          position: "fixed",
+          top: 68,
+          height: "calc(100% - 64px)",
+          background: "linear-gradient(135deg, #43cea2 0%, #185a9d 100%)",
+          color: "#fff",
+          borderRight: "none",
         },
       }}
     >
@@ -280,59 +281,49 @@ export default function DriverDashboard() {
             height: 80,
             mx: "auto",
             mb: 2,
-            border: "2px solid",
-            borderColor: "primary.main",
+            border: "2px solid #fff",
           }}
         />
         <Typography variant="h6" fontWeight={600}>
           {fullName}
         </Typography>
-        <Typography color="text.secondary" variant="body2">
+        <Typography variant="body2" color="rgba(255,255,255,0.7)">
           {email}
         </Typography>
         <Chip
           icon={<VerifiedUser fontSize="small" />}
           label="Verified Driver"
-          color="primary"
-          size="small"
-          sx={{ mt: 1.5 }}
+          sx={{
+            mt: 1.5,
+            backgroundColor: "rgba(255,255,255,0.2)",
+            color: "#fff",
+          }}
         />
-        <Stack direction="row" spacing={2} justifyContent="center" mt={2}>
-          <Tooltip title="Total Earnings">
-            <Chip
-              icon={<AttachMoney fontSize="small" />}
-              label={`৳${driverEarnings.toFixed(2)}`}
-              color="success"
-              variant="outlined"
-              size="small"
-            />
-          </Tooltip>
-          <Tooltip title="Total Rides">
-            <Chip
-              icon={<DirectionsCar fontSize="small" />}
-              label={rideHistory.length}
-              color="info"
-              variant="outlined"
-              size="small"
-            />
-          </Tooltip>
-        </Stack>
       </Box>
       <List>
+        {/* Dashboard */}
         <ListItem
           button
           selected={activeTab === "dashboard"}
           onClick={() => setActiveTab("dashboard")}
           sx={{
             "&.Mui-selected": {
-              backgroundColor: "primary.light",
-              "&:hover": { backgroundColor: "primary.light" },
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+            },
+            "&:hover": {
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
             },
           }}
         >
           <ListItemIcon
             sx={{
-              color: activeTab === "dashboard" ? "primary.main" : "inherit",
+              color: "#fff",
+              transition: "transform 0.3s ease, box-shadow 0.3s ease",
+              borderRadius: "50%",
+              ...(activeTab === "dashboard" && {
+                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
+              }),
+              "&:hover": { transform: "scale(1.2)" },
             }}
           >
             <Home />
@@ -340,49 +331,101 @@ export default function DriverDashboard() {
           <ListItemText
             primary="Dashboard"
             primaryTypographyProps={{ fontWeight: 500 }}
+            sx={{ color: "#fff" }}
           />
         </ListItem>
+
+        {/* Ride History */}
         <ListItem
           button
-          onClick={() => navigate("/ride-history")}
+          selected={activeTab === "ride-history"}
+          onClick={() => {
+            setActiveTab("ride-history");
+            navigate("/ride-history");
+          }}
           sx={{
             "&.Mui-selected": {
-              backgroundColor: "primary.light",
-              "&:hover": { backgroundColor: "primary.light" },
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+            },
+            "&:hover": {
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
             },
           }}
         >
-          <ListItemIcon>
-            <Badge badgeContent={rideHistory.length} color="primary" max={99}>
+          <ListItemIcon
+            sx={{
+              color: "#fff",
+              transition: "transform 0.3s ease, box-shadow 0.3s ease",
+              borderRadius: "50%",
+              ...(activeTab === "ride-history" && {
+                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
+              }),
+              "&:hover": { transform: "scale(1.2)" },
+            }}
+          >
+            <Badge
+              badgeContent={rideHistory.length}
+              color="secondary"
+              sx={{
+                "& .MuiBadge-badge": {
+                  background: "linear-gradient(90deg, #43cea2, #185a9d)",
+                  color: "#fff",
+                  fontWeight: "bold",
+                  border: "2px solid #fff",
+                  animation: "pulse 1.8s infinite ease-in-out",
+                },
+                "@keyframes pulse": {
+                  "0%": { transform: "scale(1)" },
+                  "50%": { transform: "scale(1.1)" },
+                  "100%": { transform: "scale(1)" },
+                },
+              }}
+            >
               <History />
             </Badge>
           </ListItemIcon>
           <ListItemText
             primary="Ride History"
             primaryTypographyProps={{ fontWeight: 500 }}
+            sx={{ color: "#fff" }}
           />
         </ListItem>
+
+        {/* Profile */}
         <ListItem
           button
           selected={activeTab === "profile"}
           onClick={() => setActiveTab("profile")}
           sx={{
             "&.Mui-selected": {
-              backgroundColor: "primary.light",
-              "&:hover": { backgroundColor: "primary.light" },
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+            },
+            "&:hover": {
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
             },
           }}
         >
           <ListItemIcon
-            sx={{ color: activeTab === "profile" ? "primary.main" : "inherit" }}
+            sx={{
+              color: "#fff",
+              transition: "transform 0.3s ease, box-shadow 0.3s ease",
+              borderRadius: "50%",
+              ...(activeTab === "profile" && {
+                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
+              }),
+              "&:hover": { transform: "scale(1.2)" },
+            }}
           >
             <AccountCircle />
           </ListItemIcon>
           <ListItemText
             primary="Profile"
             primaryTypographyProps={{ fontWeight: 500 }}
+            sx={{ color: "#fff" }}
           />
         </ListItem>
+
+        {/* Logout */}
         <ListItem
           button
           onClick={() => {
@@ -390,13 +433,25 @@ export default function DriverDashboard() {
             localStorage.removeItem("user");
             navigate("/login");
           }}
+          sx={{
+            "&:hover": {
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
+            },
+          }}
         >
-          <ListItemIcon>
+          <ListItemIcon
+            sx={{
+              color: "#fff",
+              transition: "transform 0.3s ease",
+              "&:hover": { transform: "scale(1.2)" },
+            }}
+          >
             <Logout />
           </ListItemIcon>
           <ListItemText
             primary="Logout"
             primaryTypographyProps={{ fontWeight: 500 }}
+            sx={{ color: "#fff" }}
           />
         </ListItem>
       </List>

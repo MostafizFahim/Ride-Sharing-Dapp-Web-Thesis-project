@@ -1,7 +1,7 @@
 import React, { useContext } from "react";
 import { Navigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { UserContext } from "../components/UserContext"; // adjust if needed
+import { UserContext } from "../components/UserContext"; // Adjust if your path differs
 
 export default function ProtectedRoute({ children, requiredRole }) {
   const { user } = useContext(UserContext);
@@ -11,7 +11,6 @@ export default function ProtectedRoute({ children, requiredRole }) {
     return <Navigate to="/login" />;
   }
 
-  // Support for both .role and .currentRole (dual role system)
   const currentRole = user.currentRole || user.role;
 
   if (requiredRole && currentRole !== requiredRole) {

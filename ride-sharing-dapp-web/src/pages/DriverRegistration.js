@@ -40,7 +40,7 @@ const ALLOWED_FILE_TYPES = [
 const steps = ["Personal Info", "Vehicle Details", "Documents"];
 
 const mustangButtonStyle = {
-  background: "linear-gradient(90deg, #3793e0 0%, #53a0fd 100%)",
+  background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
   color: "#fff",
   fontWeight: "bold",
   borderRadius: 3,
@@ -50,7 +50,7 @@ const mustangButtonStyle = {
   fontSize: "1.07rem",
   transition: "background 0.2s, box-shadow 0.2s",
   "&:hover": {
-    background: "linear-gradient(90deg, #53a0fd 0%, #3793e0 100%)",
+    background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
     boxShadow: 4,
   },
 };
@@ -305,12 +305,14 @@ export default function DriverRegistration() {
                 src={formData.profilePhotoUrl}
                 alt="Profile"
                 sx={{
-                  width: 72,
-                  height: 72,
-                  mx: "auto",
-                  my: 1,
-                  boxShadow: 2,
-                  border: "2px solid #53a0fd",
+                  color: "#185a9d",
+                  borderColor: "#43cea2",
+                  fontWeight: "bold",
+                  borderRadius: 2,
+                  "&:hover": {
+                    borderColor: "#185a9d",
+                    color: "#43cea2",
+                  },
                 }}
               />
             )}
@@ -556,11 +558,45 @@ export default function DriverRegistration() {
             variant="h4"
             align="center"
             fontWeight={900}
-            sx={{ color: "#3793e0", letterSpacing: 1, mb: 2 }}
+            sx={{
+              background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              letterSpacing: 1,
+              mb: 2,
+            }}
           >
             Driver Registration
           </Typography>
-          <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
+
+          <Stepper
+            activeStep={activeStep}
+            alternativeLabel
+            sx={{
+              mb: 3,
+              "& .MuiStepLabel-label": {
+                color: "#999", // default label color
+                fontWeight: 600,
+              },
+              "& .MuiStepLabel-root.Mui-completed .MuiStepLabel-label": {
+                color: "#185a9d", // completed step label
+              },
+              "& .MuiStepLabel-root.Mui-active .MuiStepLabel-label": {
+                background: "linear-gradient(90deg, #43cea2, #185a9d)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              },
+              "& .MuiStepIcon-root": {
+                color: "#ccc", // default icon color
+              },
+              "& .MuiStepIcon-root.Mui-active": {
+                color: "#43cea2", // active step icon color
+              },
+              "& .MuiStepIcon-root.Mui-completed": {
+                color: "#185a9d", // completed step icon color
+              },
+            }}
+          >
             {steps.map((label) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>

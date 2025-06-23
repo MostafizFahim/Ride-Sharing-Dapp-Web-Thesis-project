@@ -137,7 +137,7 @@ const HomePage = () => {
           >
             Welcome back{user.name ? `, ${user.name}` : ""}!
           </Typography>
-          <Chip
+          {/* <Chip
             label={currentRole}
             color={currentRole === "Driver" ? "info" : "primary"}
             size="medium"
@@ -147,7 +147,7 @@ const HomePage = () => {
               bgcolor: "#3793e0",
               fontSize: "1rem",
             }}
-          />
+          /> */}
         </Box>
         <Typography
           component={motion.div}

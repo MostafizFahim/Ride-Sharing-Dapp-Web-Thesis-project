@@ -13,134 +13,107 @@ import {
   Box,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import HomeIcon from "@mui/icons-material/Home";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { UserContext } from "./UserContext";
 
 export default function NavBar() {
   const { user, setUser } = useContext(UserContext);
-  const isLoggedIn = !!user;
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
 
+  const isLoggedIn = !!user;
   const currentRole = user?.currentRole || "Passenger";
   const roles = user?.roles || ["Passenger"];
-
-  // LOGOUT clears both context and localStorage
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
-    toast.info("Logged out successfully");
-    navigate("/login");
-  };
-
-  // Navigates user to dashboard by role
-  const handleRoleNav = (role) => {
-    if (!isLoggedIn) {
-      toast.warning("Please login first");
-      navigate("/login");
-      return;
-    }
-    if (role === "Driver") navigate("/driver");
-    else if (role === "Passenger") navigate("/passenger");
-    else if (role === "Admin") navigate("/admin");
-    else navigate("/");
-  };
-
-  // Handles switching role in user context
-  const handleSwitchRole = () => {
-    if (!isLoggedIn) return;
-    // Allow dynamic switching if more than one role present
-    const availableRoles = roles.filter((r) => r !== currentRole);
-    if (availableRoles.length > 0) {
-      const newRole = availableRoles[0]; // Switch to the next role available
-      const updatedUser = { ...user, currentRole: newRole };
-      setUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      toast.success(`Switched to ${newRole} mode`);
-      handleRoleNav(newRole);
-    } else if (roles.includes("Passenger")) {
-      toast.info("Register as a driver to enable driver mode.");
-      navigate("/driver-registration");
-    } else {
-      toast.info("No other role to switch to.");
-    }
-    handleMenuClose();
-  };
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
 
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem("user");
+    toast.info("Logged out successfully");
+    navigate("/");
+    handleMenuClose();
+  };
+
+  const handleSwitchRole = () => {
+    if (!isLoggedIn) return;
+    const otherRoles = roles.filter((r) => r !== currentRole);
+    if (otherRoles.length > 0) {
+      const newRole = otherRoles[0];
+      const updatedUser = { ...user, currentRole: newRole };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      toast.success(`Switched to ${newRole} mode`);
+      handleMenuClose();
+      navigate(`/${newRole.toLowerCase()}`);
+    } else {
+      toast.info("No other role to switch to.");
+    }
+  };
+
+  const handleRegisterPassenger = () => {
+    toast.info("Please select Passenger role during registration");
+    handleMenuClose();
+  };
+
+  const handleRegisterDriver = () => {
+    toast.info("Please select Driver role during registration");
+    handleMenuClose();
+  };
+
   return (
     <AppBar
       position="static"
-      elevation={4}
+      elevation={5}
       sx={{
-        background: "linear-gradient(90deg, #00274d 0%, #2575fc 100%)",
-        borderBottom: "3px solid #b71c1c",
-        minHeight: 68,
+        background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+        borderBottom: "4px solid #43cea2",
+        minHeight: 72,
       }}
     >
-      <Toolbar
-        sx={{ display: "flex", justifyContent: "space-between", minHeight: 68 }}
-      >
-        {/* Logo & Current Role */}
+      <Toolbar sx={{ display: "flex", justifyContent: "space-between", px: 2 }}>
+        {/* Logo & App Name */}
         <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            display="flex"
-            alignItems="center"
-            gap={2}
-            onClick={() => navigate("/")}
-            sx={{ cursor: "pointer" }}
-          >
+          <Box sx={{ cursor: "pointer" }} onClick={() => navigate("/")}>
             <img
               src="/logo123.png"
               alt="NexTrip Logo"
               style={{
                 width: "52px",
                 height: "52px",
-                borderRadius: "8px",
-                //backgroundColor: "#fff",
+                borderRadius: "10px",
                 padding: "4px",
               }}
             />
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 900,
-                color: "#fff",
-                letterSpacing: 2,
-                fontSize: { xs: "1.1rem", md: "1.3rem" },
-                textShadow: "0 2px 8px rgba(30,40,100,0.2)",
-              }}
-            >
-              NexTrip
-            </Typography>
-            {/* {isLoggedIn && (
-              <Chip
-                label={currentRole}
-                color={currentRole === "Driver" ? "info" : "primary"}
-                size="small"
-                sx={{
-                  ml: 1,
-                  color: "#fff",
-                  fontWeight: 700,
-                  bgcolor: "#3793e0",
-                }}
-              />
-            )} */}
           </Box>
+          <Typography
+            variant="h6"
+            fontWeight={900}
+            sx={{
+              color: "#fff",
+              letterSpacing: 2,
+              fontSize: { xs: "1rem", md: "1.3rem" },
+              textShadow: "0 2px 8px rgba(0,0,0,0.15)",
+              cursor: "pointer",
+            }}
+            onClick={() => navigate("/")}
+          >
+            NexTrip
+          </Typography>
 
           {isLoggedIn && (
             <Chip
               label={currentRole}
-              color={currentRole === "Driver" ? "info" : "primary"}
               size="small"
-              sx={{ ml: 1, color: "#fff", fontWeight: 700, bgcolor: "#3793e0" }}
+              sx={{ bgcolor: "#00c896", color: "#fff", fontWeight: 700, ml: 1 }}
             />
           )}
         </Box>
-        {/* Avatar & Menu */}
+
+        {/* User Menu */}
         <Box display="flex" alignItems="center" gap={1.5}>
           {isLoggedIn && user?.picture && (
             <Tooltip title={user.email}>
@@ -148,16 +121,15 @@ export default function NavBar() {
                 src={user.picture}
                 alt="User"
                 sx={{
-                  width: 36,
-                  height: 36,
-                  border: "2px solid #2575fc",
-                  boxShadow: "0 2px 6px rgba(33,47,98,0.10)",
-                  bgcolor: "#f5f7fa",
+                  width: 38,
+                  height: 38,
+                  border: "2px solid #fff",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
                 }}
               />
             </Tooltip>
           )}
-          <IconButton onClick={handleMenuOpen} sx={{ color: "#fff", ml: 0.5 }}>
+          <IconButton onClick={handleMenuOpen} sx={{ color: "#fff" }}>
             <MenuIcon sx={{ fontSize: 30 }} />
           </IconButton>
           <Menu
@@ -166,101 +138,78 @@ export default function NavBar() {
             onClose={handleMenuClose}
             PaperProps={{
               sx: {
-                borderRadius: 3,
+                mt: 1.5,
+                borderRadius: 2,
+                boxShadow: 6,
+                background: "#f4f6fb",
                 minWidth: 200,
-                mt: 1,
-                boxShadow: 4,
-                bgcolor: "#e3ecfa",
               },
             }}
           >
-            <MenuItem
-              onClick={() => {
-                navigate("/ride-history");
-                handleMenuClose();
-              }}
-            >
-              Ride History
+            {/* Home button for all roles */}
+            <MenuItem onClick={() => navigate("/")}>
+              <HomeIcon sx={{ mr: 1 }} />
+              Homepage
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                navigate("/ride-in-progress");
-                handleMenuClose();
-              }}
-            >
-              Ride In Progress
-            </MenuItem>
-            {/* Role Switch Option */}
-            {isLoggedIn && roles.length > 1 && (
-              <MenuItem onClick={handleSwitchRole}>
-                Switch to {roles.filter((r) => r !== currentRole)[0]}
-              </MenuItem>
-            )}
-            {isLoggedIn &&
-              roles.length === 1 &&
-              roles.includes("Passenger") && (
-                <MenuItem onClick={handleSwitchRole}>Become a Driver</MenuItem>
-              )}
-            <MenuItem
-              onClick={() => {
-                navigate("/driver-registration");
-                handleMenuClose();
-              }}
-            >
-              Driver Registration
-            </MenuItem>
-            {roles.includes("Admin") && (
-              <MenuItem
-                onClick={() => {
-                  navigate("/admin");
-                  handleMenuClose();
-                }}
-              >
-                Admin Panel
-              </MenuItem>
-            )}
-            <Divider sx={{ my: 0.5 }} />
-            {isLoggedIn && (
+            <Divider />
+
+            {isLoggedIn ? (
               <>
-                <MenuItem
-                  onClick={() => {
-                    navigate("/profile");
-                    handleMenuClose();
-                  }}
-                >
+                {/* Dashboard Links */}
+                {currentRole === "Passenger" && (
+                  <MenuItem onClick={() => navigate("/passenger")}>
+                    Passenger Dashboard
+                  </MenuItem>
+                )}
+                {currentRole === "Driver" && (
+                  <MenuItem onClick={() => navigate("/driver")}>
+                    Driver Dashboard
+                  </MenuItem>
+                )}
+                {currentRole === "Admin" && (
+                  <MenuItem onClick={() => navigate("/admin")}>
+                    Admin Dashboard
+                  </MenuItem>
+                )}
+
+                {/* Common Features */}
+                <MenuItem onClick={() => navigate("/ride-history")}>
+                  Ride History
+                </MenuItem>
+
+                {currentRole === "Passenger" && (
+                  <MenuItem onClick={() => navigate("/ride-in-progress")}>
+                    Ride In Progress
+                  </MenuItem>
+                )}
+
+                {/* Role Management */}
+                {roles.length > 1 && (
+                  <MenuItem onClick={handleSwitchRole}>
+                    Switch to {roles.find((r) => r !== currentRole)}
+                  </MenuItem>
+                )}
+
+                <Divider />
+
+                <MenuItem onClick={() => navigate("/profile")}>
                   Profile
                 </MenuItem>
                 <MenuItem
-                  onClick={() => {
-                    handleLogout();
-                    handleMenuClose();
-                  }}
-                  sx={{
-                    color: "#b71c1c",
-                    fontWeight: 700,
-                  }}
+                  onClick={handleLogout}
+                  sx={{ color: "#b71c1c", fontWeight: 700 }}
                 >
                   Logout
                 </MenuItem>
               </>
-            )}
-            {!isLoggedIn && (
+            ) : (
               <>
-                <MenuItem
-                  onClick={() => {
-                    navigate("/login");
-                    handleMenuClose();
-                  }}
-                >
-                  Login
+                <MenuItem onClick={() => navigate("/login")}>Login</MenuItem>
+                <MenuItem onClick={handleRegisterPassenger}>
+                  Register as Passenger
                 </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    navigate("/register");
-                    handleMenuClose();
-                  }}
-                >
-                  Signup
+                <MenuItem onClick={handleRegisterDriver}>
+                  Register as Driver
                 </MenuItem>
               </>
             )}

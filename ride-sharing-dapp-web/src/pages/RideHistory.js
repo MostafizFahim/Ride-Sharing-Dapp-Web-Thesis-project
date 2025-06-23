@@ -58,10 +58,10 @@ export default function RideHistory() {
       <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
         <Button
           startIcon={<BackIcon />}
-          onClick={() => navigate("/profile")}
+          onClick={() => navigate("/driver")}
           sx={{ mr: 2 }}
         >
-          Back to Profile
+          Back to Dashboard
         </Button>
         <Typography variant="h4" sx={{ flexGrow: 1 }}>
           <HistoryIcon sx={{ verticalAlign: "middle", mr: 1 }} />

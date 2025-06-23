@@ -15,20 +15,20 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useTheme } from "@mui/material/styles";
-import { useUser } from "../components/UserContext"; // path as needed
+import { useUser } from "../components/UserContext";
 
-const mustangButtonStyle = {
-  background: "linear-gradient(90deg, #3793e0 0%, #53a0fd 100%)",
+const gradientButtonStyle = {
+  background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
   color: "#fff",
   fontWeight: "bold",
-  borderRadius: 3,
+  borderRadius: 2,
   boxShadow: 2,
-  py: 1.2,
-  letterSpacing: 1,
-  fontSize: "1.07rem",
-  transition: "background 0.2s, box-shadow 0.2s",
+  py: 1,
+  fontSize: "1rem",
+  letterSpacing: 0.8,
+  transition: "0.3s ease-in-out",
   "&:hover": {
-    background: "linear-gradient(90deg, #53a0fd 0%, #3793e0 100%)",
+    background: "linear-gradient(90deg, #185a9d 0%, #43cea2 100%)",
     boxShadow: 4,
   },
 };
@@ -36,7 +36,7 @@ const mustangButtonStyle = {
 export default function RegisterPage() {
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { setUser } = useUser();
 
   const [form, setForm] = useState({
@@ -120,14 +120,10 @@ export default function RegisterPage() {
       };
 
       if (role === "Driver") {
-        // Forward to driver registration step
         navigate("/driver-registration", {
-          state: {
-            driverBase: baseUser,
-          },
+          state: { driverBase: baseUser },
         });
       } else {
-        // Passenger or Admin: register immediately
         setUser(baseUser);
         localStorage.setItem("user", JSON.stringify(baseUser));
         localStorage.setItem("registeredUser", JSON.stringify(baseUser));
@@ -142,76 +138,98 @@ export default function RegisterPage() {
     <Box
       sx={{
         minHeight: "100vh",
-        minWidth: "100vw",
-        bgcolor: "#f4f6fb",
         display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        py: 0,
-        px: 0,
+        flexDirection: isMobile ? "column" : "row",
       }}
     >
+      {/* Left Side - Static, Centered */}
       <Box
+        flex={4}
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
         sx={{
-          width: isMobile ? "100vw" : "100vw",
-          maxWidth: isMobile ? "100vw" : 800,
-          mx: "auto",
-          py: isMobile ? 2 : 4,
-          px: isMobile ? 1 : 3,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
+          background: "linear-gradient(135deg, #43cea2 0%, #185a9d 100%)",
+          color: "#fff",
+          textAlign: "center",
+          px: 4,
+          py: 6,
+          position: "sticky", // keeps it from scrolling
+          top: 0,
+          height: "100vh",
+        }}
+      >
+        <Typography variant="h4" fontWeight="bold" gutterBottom>
+          Welcome Back!
+        </Typography>
+        <Typography sx={{ mb: 4 }}>
+          Already have an account? Click below to sign in.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => navigate("/login")}
+          sx={{
+            bgcolor: "#fff",
+            color: "#333",
+            fontWeight: "bold",
+            fontSize: "1rem",
+            px: 4,
+            py: 1.2,
+            borderRadius: "25px",
+            ":hover": {
+              bgcolor: "#f0f0f0",
+            },
+          }}
+        >
+          Sign In
+        </Button>
+      </Box>
+
+      {/* Right Panel - 60% */}
+      <Box
+        flex={7}
+        sx={{
+          height: "100vh",
+          overflowY: "auto",
+          bgcolor: "#fff",
+          px: isMobile ? 2 : 8,
+          py: isMobile ? 4 : 6,
         }}
       >
         <Paper
-          elevation={4}
-          sx={{
-            width: "100%",
-            maxWidth: isMobile ? "100vw" : 600,
-            borderRadius: 4,
-            background: "#fff",
-            boxShadow: "0 8px 24px 0 rgba(80, 120, 255, 0.08)",
-            p: isMobile ? 2 : 4,
-            mx: "auto",
-            overflow: "auto",
-          }}
+          elevation={3}
+          sx={{ maxWidth: 600, mx: "auto", borderRadius: 4, p: 4 }}
         >
           <Typography
             variant="h4"
             align="center"
-            gutterBottom
             fontWeight={900}
-            sx={{ color: "#3793e0", letterSpacing: 1.1, mb: 0.5 }}
+            sx={{
+              background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              letterSpacing: 1,
+              mb: 2,
+            }}
           >
             Create Account
           </Typography>
-          <Typography
-            align="center"
-            color="text.secondary"
-            gutterBottom
-            sx={{ fontSize: "1.10rem", mb: 1.5 }}
-          >
-            Register to get started
-          </Typography>
 
           <form onSubmit={handleSubmit}>
-            <Box
-              mt={2}
-              display="flex"
-              flexDirection="column"
-              gap={isMobile ? 2 : 2.5}
-            >
+            <Box display="flex" flexDirection="column" gap={2}>
               <Button
                 variant="outlined"
                 component="label"
                 sx={{
                   borderRadius: 2,
                   fontWeight: 700,
-                  color: "#3793e0",
-                  borderColor: "#3793e0",
-                  "&:hover": { borderColor: "#53a0fd", color: "#53a0fd" },
-                  width: "100%",
+                  color: "#43cea2",
+                  borderColor: "#43cea2",
+                  "&:hover": {
+                    borderColor: "#185a9d",
+                    color: "#185a9d",
+                  },
                 }}
               >
                 Upload Profile Image
@@ -222,6 +240,7 @@ export default function RegisterPage() {
                   onChange={handleImageChange}
                 />
               </Button>
+
               {imagePreview && (
                 <Avatar
                   src={imagePreview}
@@ -232,7 +251,7 @@ export default function RegisterPage() {
                     mx: "auto",
                     my: 1,
                     boxShadow: 2,
-                    border: "2px solid #53a0fd",
+                    border: "2px solid #43cea2",
                   }}
                 />
               )}
@@ -266,9 +285,7 @@ export default function RegisterPage() {
                 name="dateOfBirth"
                 value={form.dateOfBirth}
                 onChange={handleChange}
-                InputLabelProps={{
-                  shrink: true,
-                }}
+                InputLabelProps={{ shrink: true }}
               />
               <FormControl fullWidth>
                 <InputLabel id="gender-label">Gender</InputLabel>
@@ -304,7 +321,7 @@ export default function RegisterPage() {
                   <MenuItem value="">Select</MenuItem>
                   <MenuItem value="Passenger">Passenger</MenuItem>
                   <MenuItem value="Driver">Driver</MenuItem>
-                  <MenuItem value="Admin">Admin</MenuItem>
+                  {/* <MenuItem value="Admin">Admin</MenuItem> */}
                 </Select>
               </FormControl>
               <TextField
@@ -323,33 +340,17 @@ export default function RegisterPage() {
                 value={form.confirmPassword}
                 onChange={handleChange}
               />
+
               <Button
                 fullWidth
                 variant="contained"
                 type="submit"
-                size="large"
-                sx={mustangButtonStyle}
+                sx={gradientButtonStyle}
               >
                 Register
               </Button>
             </Box>
           </form>
-
-          <Typography align="center" mt={3} sx={{ fontSize: "1rem" }}>
-            Already have an account?{" "}
-            <Button
-              variant="text"
-              onClick={() => navigate("/login")}
-              sx={{
-                color: "#3793e0",
-                fontWeight: 700,
-                textTransform: "none",
-                fontSize: "1rem",
-              }}
-            >
-              Sign In
-            </Button>
-          </Typography>
         </Paper>
       </Box>
     </Box>
