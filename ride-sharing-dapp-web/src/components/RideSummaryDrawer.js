@@ -55,7 +55,8 @@ const RideSummaryDrawer = ({
           gap: 1.5,
           px: 3,
           py: 1.5,
-          background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
+          background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+          borderBottom: "4px solid #43cea2",
           color: "white",
         }}
       >

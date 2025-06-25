@@ -57,7 +57,7 @@ export default function MapLibreMap({
   const animateDriver = (coords) => {
     if (!coords || coords.length === 0) return;
     let index = 0;
-    const speed = 0.0005; // smaller = slower, tune as needed
+    const speed = 0.0005;
 
     function animateStep() {
       if (index >= coords.length) return;
@@ -84,7 +84,27 @@ export default function MapLibreMap({
     try {
       const map = new maplibregl.Map({
         container: containerRef.current,
-        style: `https://tiles.stadiamaps.com/styles/alidade_smooth.json`,
+        style: {
+          version: 8,
+          sources: {
+            "raster-tiles": {
+              type: "raster",
+              tiles: ["https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"],
+              tileSize: 256,
+              attribution:
+                'Map data © <a href="https://maps.google.com">Google</a>',
+            },
+          },
+          layers: [
+            {
+              id: "google-tiles",
+              type: "raster",
+              source: "raster-tiles",
+              minzoom: 0,
+              maxzoom: 22,
+            },
+          ],
+        },
         center: [90.4125, 23.8103],
         zoom: 14,
       });

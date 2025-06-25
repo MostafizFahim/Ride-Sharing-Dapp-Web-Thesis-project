@@ -41,15 +41,19 @@ const ColorfulPaper = styled(Paper)(({ theme }) => ({
 }));
 
 const GradientButton = styled(IconButton)(({ theme }) => ({
-  background: "linear-gradient(45deg, #3a7bd5, #00d2ff)",
+  background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
   color: "white",
   "&:hover": {
-    background: "linear-gradient(45deg, #00d2ff, #3a7bd5)",
+    background: "linear-gradient(90deg, #185a9d 0%, #43cea2 100%)",
   },
 }));
 
 export const ConfirmRideButton = styled(Button)(({ theme }) => ({
-  background: "linear-gradient(45deg, #3a7bd5, #00d2ff)",
+  background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+  "&:hover": {
+    background: "linear-gradient(90deg, #185a9d 0%, #43cea2 100%)",
+  },
+
   color: "white",
   fontWeight: "bold",
   fontSize: "1rem",
@@ -59,7 +63,8 @@ export const ConfirmRideButton = styled(Button)(({ theme }) => ({
   textTransform: "none",
   boxShadow: "0px 4px 15px rgba(58, 123, 213, 0.4)",
   "&:hover": {
-    background: "linear-gradient(45deg, #00d2ff, #3a7bd5)",
+    background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+    // borderBottom: "4px solid #43cea2",
   },
 }));
 
@@ -78,6 +83,7 @@ const PassengerDashboard = () => {
   const [vehicleType, setVehicleType] = useState("");
   const [distanceKm, setDistanceKm] = useState(null);
   const [mapSelectMode, setMapSelectMode] = useState("dropoff"); // or "pickup"
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const [surgeMultiplier, setSurgeMultiplier] = useState(1.0);
   const [history, setHistory] = useState(
@@ -268,6 +274,17 @@ const PassengerDashboard = () => {
     toast.success("Ride confirmed! Finding your driver...");
     navigate("/ride-in-progress");
   };
+  const handleCancelRide = () => {
+    setPickup("");
+    setDropoff("");
+    setPickupCoords(null);
+    setDropoffCoords(null);
+    setRideType("");
+    setVehicleType("");
+    setDistanceKm(null);
+    setSummaryOpen(false);
+    toast.info("Ride selection cancelled.");
+  };
 
   const vehicleSpeeds = { Car: 30, Bike: 40, CNG: 25 };
   const eta =
@@ -358,7 +375,9 @@ const PassengerDashboard = () => {
           <Box
             sx={{
               p: 2.5,
-              background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
+              background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+              borderBottom: "4px solid #43cea2",
+
               color: "white",
             }}
           >
@@ -500,7 +519,9 @@ const PassengerDashboard = () => {
                 <Box
                   sx={{
                     p: 2,
-                    background: "linear-gradient(90deg, #3a7bd5, #00d2ff)",
+                    background:
+                      "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+                    borderBottom: "4px solid #43cea2",
                     color: "white",
                     borderTopLeftRadius: "18px",
                     borderTopRightRadius: "18px",
@@ -521,6 +542,7 @@ const PassengerDashboard = () => {
                     eta={eta}
                     surgeMultiplier={surgeMultiplier}
                     onConfirmRide={handleConfirmRide}
+                    onCancelRide={handleCancelRide}
                     disabled={!selectionsValid}
                     aria-label="Vehicle and Ride Type Selection Panel"
                   />
@@ -532,41 +554,76 @@ const PassengerDashboard = () => {
       </AnimatePresence>
 
       {/* RIDE SUMMARY - Bottom Left */}
+      {/* Toggle Button */}
+
       <Box
         sx={{
           position: "absolute",
-          bottom: 5,
-          left: 20,
-          width: { xs: "95vw", sm: 450 },
-          zIndex: 1100,
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          backgroundColor: "rgba(255, 255, 255, 0.08)",
-          borderRadius: 4,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
+          bottom: 10,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1300,
         }}
       >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.92 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+        <Button
+          size="small"
+          variant="contained"
+          onClick={() => setSummaryOpen((prev) => !prev)}
+          sx={{
+            background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+            color: "white",
+            borderRadius: "20px",
+            fontWeight: "bold",
+            textTransform: "none",
+            px: 2.5,
+            py: 0.8,
+          }}
         >
-          <ColorfulPaper elevation={3}>
-            <RideSummaryDrawer
-              pickup={pickup}
-              dropoff={dropoff}
-              rideType={rideType}
-              vehicleType={vehicleType}
-              distanceKm={distanceKm}
-              eta={eta}
-              fare={fare}
-              onConfirmRide={handleConfirmRide}
-              disabled={!selectionsValid}
-            />
-          </ColorfulPaper>
-        </motion.div>
+          {summaryOpen ? "Hide Summary" : "Show Summary"}
+        </Button>
       </Box>
+
+      <AnimatePresence>
+        {summaryOpen && (
+          <Box
+            key="ride-summary"
+            sx={{
+              position: "absolute",
+              bottom: 60, // above the toggle
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: { xs: "95vw", sm: 450 },
+              zIndex: 1200,
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              backgroundColor: "rgba(255, 255, 255, 0.08)",
+              borderRadius: 4,
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <ColorfulPaper elevation={3}>
+                <RideSummaryDrawer
+                  pickup={pickup}
+                  dropoff={dropoff}
+                  rideType={rideType}
+                  vehicleType={vehicleType}
+                  distanceKm={distanceKm}
+                  eta={eta}
+                  fare={fare}
+                  onConfirmRide={handleConfirmRide}
+                  disabled={!selectionsValid}
+                />
+              </ColorfulPaper>
+            </motion.div>
+          </Box>
+        )}
+      </AnimatePresence>
     </Box>
   );
 };

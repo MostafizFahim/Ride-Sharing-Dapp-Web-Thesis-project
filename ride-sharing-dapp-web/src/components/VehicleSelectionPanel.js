@@ -6,10 +6,12 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   Box,
+  Button,
 } from "@mui/material";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import TwoWheelerIcon from "@mui/icons-material/TwoWheeler";
 import EmojiPeopleIcon from "@mui/icons-material/EmojiPeople";
+import CNGIcon from "../components/CNGIcon";
 
 // Import the styled ConfirmRideButton from PassengerDashboard
 import { ConfirmRideButton } from "../pages/PassengerDashboard";
@@ -20,6 +22,7 @@ const VehicleSelectionPanel = ({
   vehicleType,
   onVehicleTypeChange,
   onConfirmRide,
+  onCancelRide, // <-- Add this prop
   fare,
   eta,
   disabled,
@@ -27,17 +30,13 @@ const VehicleSelectionPanel = ({
   return (
     <Card
       sx={{
-        width: "100%", // Parent controls actual width
+        width: "100%",
         boxShadow: 4,
         borderRadius: 2,
         bgcolor: "white",
       }}
     >
       <CardContent>
-        {/* <Typography variant="h6" gutterBottom>
-          Select Vehicle & Ride Type
-        </Typography> */}
-
         <Typography variant="subtitle2" gutterBottom>
           Vehicle Type
         </Typography>
@@ -55,7 +54,10 @@ const VehicleSelectionPanel = ({
             <TwoWheelerIcon sx={{ mr: 1 }} /> Bike
           </ToggleButton>
           <ToggleButton value="CNG">
-            <EmojiPeopleIcon sx={{ mr: 1 }} /> CNG
+            <Box sx={{ mr: 1, display: "flex", alignItems: "center" }}>
+              <CNGIcon />
+            </Box>
+            CNG
           </ToggleButton>
         </ToggleButtonGroup>
 
@@ -75,20 +77,29 @@ const VehicleSelectionPanel = ({
 
         <Box mt={2}>
           <Typography>
-            <strong>Fare:</strong> ${fare}
-          </Typography>
-          <Typography>
-            <strong>ETA:</strong> {eta}
+            <strong>Fare:</strong> ৳{fare}
           </Typography>
         </Box>
 
-        <ConfirmRideButton
-          fullWidth
-          onClick={onConfirmRide}
-          disabled={disabled}
-        >
-          Confirm Ride
-        </ConfirmRideButton>
+        <Box mt={1}>
+          <ConfirmRideButton
+            fullWidth
+            onClick={onConfirmRide}
+            disabled={disabled}
+          >
+            Confirm Ride
+          </ConfirmRideButton>
+
+          <Button
+            fullWidth
+            variant="outlined"
+            color="error"
+            sx={{ mt: 1 }}
+            onClick={onCancelRide}
+          >
+            Cancel Ride
+          </Button>
+        </Box>
       </CardContent>
     </Card>
   );
