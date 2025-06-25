@@ -1,40 +1,41 @@
 import React, { useContext, useState } from "react";
 import {
-  AppBar,
-  Toolbar,
-  Typography,
-  IconButton,
-  Menu,
-  MenuItem,
-  Avatar,
-  Tooltip,
-  Divider,
-  Chip,
-  Box,
-} from "@mui/material";
-import MenuIcon from "@mui/icons-material/Menu";
-import HomeIcon from "@mui/icons-material/Home";
-import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  Platform,
+  Modal,
+  ScrollView,
+  Alert,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { UserContext } from "./UserContext";
+import Toast from "react-native-toast-message";
 
 export default function NavBar() {
   const { user, setUser } = useContext(UserContext);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const navigate = useNavigate();
+  const [menuVisible, setMenuVisible] = useState(false);
+  const navigation = useNavigation();
 
   const isLoggedIn = !!user;
   const currentRole = user?.currentRole || "Passenger";
   const roles = user?.roles || ["Passenger"];
 
-  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
-  const handleMenuClose = () => setAnchorEl(null);
+  const handleMenuToggle = () => setMenuVisible(!menuVisible);
+  const handleMenuClose = () => setMenuVisible(false);
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem("user");
-    toast.info("Logged out successfully");
-    navigate("/");
+    // AsyncStorage.removeItem('user'); // Uncomment if using AsyncStorage
+    Toast.show({
+      type: "info",
+      text1: "Logged out successfully",
+    });
+    navigation.navigate("Home");
     handleMenuClose();
   };
 
@@ -45,177 +46,326 @@ export default function NavBar() {
       const newRole = otherRoles[0];
       const updatedUser = { ...user, currentRole: newRole };
       setUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      toast.success(`Switched to ${newRole} mode`);
+      // AsyncStorage.setItem('user', JSON.stringify(updatedUser)); // Uncomment if using AsyncStorage
+      Toast.show({
+        type: "success",
+        text1: `Switched to ${newRole} mode`,
+      });
       handleMenuClose();
-      navigate(`/${newRole.toLowerCase()}`);
+      navigation.navigate(newRole);
     } else {
-      toast.info("No other role to switch to.");
+      Toast.show({
+        type: "info",
+        text1: "No other role to switch to",
+      });
     }
   };
 
-  const handleRegisterPassenger = () => {
-    toast.info("Please select Passenger role during registration");
-    handleMenuClose();
-  };
-
-  const handleRegisterDriver = () => {
-    toast.info("Please select Driver role during registration");
+  const showRegisterInfo = (role) => {
+    Toast.show({
+      type: "info",
+      text1: `Please select ${role} role during registration`,
+    });
     handleMenuClose();
   };
 
   return (
-    <AppBar
-      position="static"
-      elevation={5}
-      sx={{
-        background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
-        borderBottom: "4px solid #43cea2",
-        minHeight: 72,
-      }}
+    <LinearGradient
+      colors={["#43cea2", "#185a9d"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={styles.container}
     >
-      <Toolbar sx={{ display: "flex", justifyContent: "space-between", px: 2 }}>
-        {/* Logo & App Name */}
-        <Box display="flex" alignItems="center" gap={2}>
-          <Box sx={{ cursor: "pointer" }} onClick={() => navigate("/")}>
-            <img
-              src="/logo123.png"
-              alt="NexTrip Logo"
-              style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "10px",
-                padding: "4px",
-              }}
-            />
-          </Box>
-          <Typography
-            variant="h6"
-            fontWeight={900}
-            sx={{
-              color: "#fff",
-              letterSpacing: 2,
-              fontSize: { xs: "1rem", md: "1.3rem" },
-              textShadow: "0 2px 8px rgba(0,0,0,0.15)",
-              cursor: "pointer",
-            }}
-            onClick={() => navigate("/")}
-          >
-            NexTrip
-          </Typography>
+      {/* Logo and App Name */}
+      <TouchableOpacity
+        style={styles.logoContainer}
+        onPress={() => navigation.navigate("Home")}
+      >
+        <Image source={require("./assets/logo123.png")} style={styles.logo} />
+        <Text style={styles.appName}>NexTrip</Text>
 
-          {isLoggedIn && (
-            <Chip
-              label={currentRole}
-              size="small"
-              sx={{ bgcolor: "#00c896", color: "#fff", fontWeight: 700, ml: 1 }}
-            />
-          )}
-        </Box>
+        {isLoggedIn && (
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleText}>{currentRole}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
-        {/* User Menu */}
-        <Box display="flex" alignItems="center" gap={1.5}>
-          {isLoggedIn && user?.picture && (
-            <Tooltip title={user.email}>
-              <Avatar
-                src={user.picture}
-                alt="User"
-                sx={{
-                  width: 38,
-                  height: 38,
-                  border: "2px solid #fff",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+      {/* User Menu */}
+      <View style={styles.menuContainer}>
+        {isLoggedIn && user?.picture && (
+          <TouchableOpacity onPress={handleMenuToggle}>
+            <Image source={{ uri: user.picture }} style={styles.avatar} />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity onPress={handleMenuToggle}>
+          <MaterialIcons name="menu" size={30} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Menu Modal */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleMenuClose}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleMenuClose}
+        >
+          <View style={styles.menuContent}>
+            <ScrollView>
+              {/* Home button for all roles */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  navigation.navigate("Home");
+                  handleMenuClose();
                 }}
-              />
-            </Tooltip>
-          )}
-          <IconButton onClick={handleMenuOpen} sx={{ color: "#fff" }}>
-            <MenuIcon sx={{ fontSize: 30 }} />
-          </IconButton>
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-            PaperProps={{
-              sx: {
-                mt: 1.5,
-                borderRadius: 2,
-                boxShadow: 6,
-                background: "#f4f6fb",
-                minWidth: 200,
-              },
-            }}
-          >
-            {/* Home button for all roles */}
-            <MenuItem onClick={() => navigate("/")}>
-              <HomeIcon sx={{ mr: 1 }} />
-              Homepage
-            </MenuItem>
-            <Divider />
+              >
+                <Ionicons
+                  name="home"
+                  size={20}
+                  color="#333"
+                  style={styles.menuIcon}
+                />
+                <Text style={styles.menuText}>Homepage</Text>
+              </TouchableOpacity>
 
-            {isLoggedIn ? (
-              <>
-                {/* Dashboard Links */}
-                {currentRole === "Passenger" && (
-                  <MenuItem onClick={() => navigate("/passenger")}>
-                    Passenger Dashboard
-                  </MenuItem>
-                )}
-                {currentRole === "Driver" && (
-                  <MenuItem onClick={() => navigate("/driver")}>
-                    Driver Dashboard
-                  </MenuItem>
-                )}
-                {currentRole === "Admin" && (
-                  <MenuItem onClick={() => navigate("/admin")}>
-                    Admin Dashboard
-                  </MenuItem>
-                )}
+              <View style={styles.divider} />
 
-                {/* Common Features */}
-                <MenuItem onClick={() => navigate("/ride-history")}>
-                  Ride History
-                </MenuItem>
+              {isLoggedIn ? (
+                <>
+                  {/* Dashboard Links */}
+                  {currentRole === "Passenger" && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        navigation.navigate("Passenger");
+                        handleMenuClose();
+                      }}
+                    >
+                      <Text style={styles.menuText}>Passenger Dashboard</Text>
+                    </TouchableOpacity>
+                  )}
 
-                {currentRole === "Passenger" && (
-                  <MenuItem onClick={() => navigate("/ride-in-progress")}>
-                    Ride In Progress
-                  </MenuItem>
-                )}
+                  {currentRole === "Driver" && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        navigation.navigate("Driver");
+                        handleMenuClose();
+                      }}
+                    >
+                      <Text style={styles.menuText}>Driver Dashboard</Text>
+                    </TouchableOpacity>
+                  )}
 
-                {/* Role Management */}
-                {roles.length > 1 && (
-                  <MenuItem onClick={handleSwitchRole}>
-                    Switch to {roles.find((r) => r !== currentRole)}
-                  </MenuItem>
-                )}
+                  {currentRole === "Admin" && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        navigation.navigate("Admin");
+                        handleMenuClose();
+                      }}
+                    >
+                      <Text style={styles.menuText}>Admin Dashboard</Text>
+                    </TouchableOpacity>
+                  )}
 
-                <Divider />
+                  {/* Common Features */}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      navigation.navigate("RideHistory");
+                      handleMenuClose();
+                    }}
+                  >
+                    <Text style={styles.menuText}>Ride History</Text>
+                  </TouchableOpacity>
 
-                <MenuItem onClick={() => navigate("/profile")}>
-                  Profile
-                </MenuItem>
-                <MenuItem
-                  onClick={handleLogout}
-                  sx={{ color: "#b71c1c", fontWeight: 700 }}
-                >
-                  Logout
-                </MenuItem>
-              </>
-            ) : (
-              <>
-                <MenuItem onClick={() => navigate("/login")}>Login</MenuItem>
-                <MenuItem onClick={handleRegisterPassenger}>
-                  Register as Passenger
-                </MenuItem>
-                <MenuItem onClick={handleRegisterDriver}>
-                  Register as Driver
-                </MenuItem>
-              </>
-            )}
-          </Menu>
-        </Box>
-      </Toolbar>
-    </AppBar>
+                  {currentRole === "Passenger" && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        navigation.navigate("RideInProgress");
+                        handleMenuClose();
+                      }}
+                    >
+                      <Text style={styles.menuText}>Ride In Progress</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Role Management */}
+                  {roles.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={handleSwitchRole}
+                    >
+                      <Text style={styles.menuText}>
+                        Switch to {roles.find((r) => r !== currentRole)}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <View style={styles.divider} />
+
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      navigation.navigate("Profile");
+                      handleMenuClose();
+                    }}
+                  >
+                    <Text style={styles.menuText}>Profile</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.logoutItem]}
+                    onPress={handleLogout}
+                  >
+                    <Text style={[styles.menuText, styles.logoutText]}>
+                      Logout
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      navigation.navigate("Login");
+                      handleMenuClose();
+                    }}
+                  >
+                    <Text style={styles.menuText}>Login</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => showRegisterInfo("Passenger")}
+                  >
+                    <Text style={styles.menuText}>Register as Passenger</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => showRegisterInfo("Driver")}
+                  >
+                    <Text style={styles.menuText}>Register as Driver</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </LinearGradient>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    height: Platform.OS === "ios" ? 90 : 70,
+    paddingTop: Platform.OS === "ios" ? 30 : 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    borderBottomWidth: 4,
+    borderBottomColor: "#43cea2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  logoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  logo: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    padding: 4,
+  },
+  appName: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginLeft: 10,
+    textShadowColor: "rgba(0,0,0,0.15)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  roleBadge: {
+    backgroundColor: "#00c896",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 8,
+  },
+  roleText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  menuContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 15,
+  },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  menuContent: {
+    backgroundColor: "#f4f6fb",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: "70%",
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  menuIcon: {
+    marginRight: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#ddd",
+    marginVertical: 8,
+  },
+  logoutItem: {
+    marginTop: 8,
+  },
+  logoutText: {
+    color: "#b71c1c",
+    fontWeight: "700",
+  },
+});
