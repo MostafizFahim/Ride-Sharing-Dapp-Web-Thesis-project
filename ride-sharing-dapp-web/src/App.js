@@ -61,6 +61,15 @@ export default function App() {
           }
         />
         <Route
+          path="/driver-registration"
+          element={
+            <ProtectedRoute>
+              <DriverRegistration />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/admin"
           element={
             <ProtectedRoute requiredRole="Admin">

@@ -119,14 +119,15 @@ export default function RegisterPage() {
         role,
       };
 
+      setUser(baseUser);
+      localStorage.setItem("user", JSON.stringify(baseUser));
+      localStorage.setItem("registeredUser", JSON.stringify(baseUser));
+
       if (role === "Driver") {
         navigate("/driver-registration", {
           state: { driverBase: baseUser },
         });
       } else {
-        setUser(baseUser);
-        localStorage.setItem("user", JSON.stringify(baseUser));
-        localStorage.setItem("registeredUser", JSON.stringify(baseUser));
         toast.success("Registration successful. Please log in.");
         navigate("/login");
       }
