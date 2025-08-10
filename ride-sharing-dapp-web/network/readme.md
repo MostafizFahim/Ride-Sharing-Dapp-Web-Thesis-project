@@ -22,3 +22,12 @@ Step 5: Create Bootnode
 -> mkdir bnode
 -> cd bnode
 -> bootnode -genkey boot.key
+
+Step 6: Start Bootnode
+-> bootnode -nodekey boot.key -verbosity 7 -addr "127.0.0.1:30301"
+
+Step 7: Start Node 1
+-> geth --datadir "./data" --port 30304 --bootnodes enode://6e5cd4b17774197e9240e08d1b006b1fe19217bcdcbbfda1774864969ed0de235ab413744ae5ee03bcd5d8168c455d3be0278eb8d160ae2bf9019f96c6c8367b@127.0.0.1:0?discport=30301 --authrpc.port 8547 --ipcdisable --allow-insecure-unlock --http --http.corsdomain="https://remix.ethereum.org/" --http.api web3,eth,debug,personal,net --networkid 212121 --unlock 0xE0357b202E2317D7e0aC407a9e3B0fE450876053 --password password.txt --mine --miner.etherbase=0xE0357b202E2317D7e0aC407a9e3B0fE450876053
+
+Step 8: Start Node 2
+-> geth --datadir "./data" --port 30306 --bootnodes enode://6e5cd4b17774197e9240e08d1b006b1fe19217bcdcbbfda1774864969ed0de235ab413744ae5ee03bcd5d8168c455d3be0278eb8d160ae2bf9019f96c6c8367b@127.0.0.1:0?discport=30301 --authrpc.port 8546 --networkid 212121 --unlock 0xf1e26b9d0B658E79F5E41B98Ad8676222521ad1d --password password.txt
