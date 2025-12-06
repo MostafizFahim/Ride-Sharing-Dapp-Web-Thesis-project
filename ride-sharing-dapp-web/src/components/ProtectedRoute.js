@@ -1,21 +1,30 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { UserContext } from "../components/UserContext"; // Adjust if your path differs
+import { UserContext } from "../components/UserContext";
 
 export default function ProtectedRoute({ children, requiredRole }) {
   const { user } = useContext(UserContext);
+  const [redirect, setRedirect] = useState(null);
 
-  if (!user) {
-    toast.warning("Please login to continue");
-    return <Navigate to="/login" />;
-  }
+  useEffect(() => {
+    // Not logged in
+    if (!user) {
+      toast.warning("Please login to continue");
+      setRedirect("/login");
+      return;
+    }
 
-  const currentRole = user.currentRole || user.role;
+    // Check role
+    const currentRole = user.currentRole || user.role;
+    if (requiredRole && currentRole !== requiredRole) {
+      toast.error(`Access denied: ${requiredRole} role required`);
+      setRedirect("/");
+    }
+  }, [user, requiredRole]);
 
-  if (requiredRole && currentRole !== requiredRole) {
-    toast.error(`Access denied: ${requiredRole} role required`);
-    return <Navigate to="/" />;
+  if (redirect) {
+    return <Navigate to={redirect} replace />;
   }
 
   return children;

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Container,
   Typography,
@@ -27,38 +27,58 @@ import { useUser } from "../components/UserContext";
 export default function RideHistory() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const [activeTab, setActiveTab] = React.useState(
-    user?.currentRole || "Passenger"
-  );
+
+  const currentRole = user?.currentRole || "Passenger";
+  const [activeTab, setActiveTab] = useState(currentRole);
+
+  // Decide where the "Back" button returns
+  const backPath = currentRole === "Driver" ? "/driver" : "/passenger";
 
   // Get and validate history data from localStorage
   const getValidHistory = (key) => {
     try {
-      const history = JSON.parse(localStorage.getItem(key)) || [];
-      return history.map((ride) => ({
-        ...ride,
-        pickup: ride.pickup || "Unknown pickup",
-        dropoff: ride.dropoff || "Unknown dropoff",
-        fare: ride.fare ? Number(ride.fare) : 0,
-        timestamp: ride.timestamp || ride.date || new Date().toISOString(),
-        status: ride.status || "Completed",
-      }));
+      const raw = localStorage.getItem(key);
+      const history = raw ? JSON.parse(raw) : [];
+
+      if (!Array.isArray(history)) return [];
+
+      return history.map((ride) => {
+        const safeFare =
+          ride && ride.fare !== undefined && ride.fare !== null
+            ? Number(ride.fare)
+            : 0;
+
+        const ts = ride?.timestamp || ride?.date || new Date().toISOString();
+
+        return {
+          ...ride,
+          pickup: ride?.pickup || "Unknown pickup",
+          dropoff: ride?.dropoff || "Unknown dropoff",
+          fare: isNaN(safeFare) ? 0 : safeFare,
+          timestamp: ts,
+          status: ride?.status || "Completed",
+        };
+      });
     } catch (error) {
       console.error(`Error parsing ${key}:`, error);
       return [];
     }
   };
 
+  // Passenger rides come from PassengerDashboard (on-chain requestRide)
   const passengerHistory = getValidHistory("rideHistory");
+
+  // Driver rides come from DriverDashboard (using match/start/complete)
   const driverHistory = getValidHistory("driverRideHistory");
-  const history = activeTab === "Passenger" ? passengerHistory : driverHistory;
+
+  const history = activeTab === "Driver" ? driverHistory : passengerHistory;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 6 }}>
       <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
         <Button
           startIcon={<BackIcon />}
-          onClick={() => navigate("/driver")}
+          onClick={() => navigate(backPath)}
           sx={{ mr: 2 }}
         >
           Back to Dashboard
@@ -69,7 +89,7 @@ export default function RideHistory() {
         </Typography>
       </Box>
 
-      {/* Role Tabs */}
+      {/* Role Tabs (only show if user has both roles) */}
       {user?.roles?.length > 1 && (
         <Box sx={{ mb: 3 }}>
           <Button
@@ -108,12 +128,12 @@ export default function RideHistory() {
                 variant="outlined"
                 sx={{ mt: 2 }}
                 onClick={() =>
-                  navigate(activeTab === "Passenger" ? "/book-ride" : "/driver")
+                  navigate(activeTab === "Driver" ? "/driver" : "/passenger")
                 }
               >
-                {activeTab === "Passenger"
-                  ? "Book Your First Ride"
-                  : "Start Driving"}
+                {activeTab === "Driver"
+                  ? "Start Driving"
+                  : "Book Your First Ride"}
               </Button>
             </Paper>
           ) : (
@@ -122,7 +142,9 @@ export default function RideHistory() {
                 <TableHead sx={{ bgcolor: "background.default" }}>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Trip</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Date & Time</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      Date &amp; Time
+                    </TableCell>
                     <TableCell sx={{ fontWeight: 700 }} align="right">
                       Fare
                     </TableCell>

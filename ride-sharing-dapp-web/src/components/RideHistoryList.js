@@ -21,7 +21,7 @@ const RideHistoryList = ({ history = [], onRebook }) => {
   return (
     <Grid container spacing={2}>
       {history.map((ride, i) => (
-        <Grid item xs={12} sm={6} key={i}>
+        <Grid item xs={12} sm={6} key={ride.id || i}>
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
             <CardContent>
               <Typography>
@@ -43,10 +43,11 @@ const RideHistoryList = ({ history = [], onRebook }) => {
                 <strong>Fare:</strong>{" "}
                 {ride.fare !== undefined ? `৳${ride.fare}` : "N/A"}
               </Typography>
+
               <Box mt={2} textAlign="right">
                 <Button
                   variant="outlined"
-                  onClick={() => onRebook(ride)}
+                  onClick={() => onRebook?.(ride)}
                   disabled={!onRebook}
                 >
                   Rebook

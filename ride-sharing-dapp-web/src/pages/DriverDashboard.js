@@ -5,7 +5,6 @@ import {
   Box,
   Card,
   CardContent,
-  Divider,
   Button,
   Stepper,
   Step,
@@ -16,9 +15,6 @@ import {
   ListItemText,
   ListItemIcon,
   Chip,
-  Drawer,
-  IconButton,
-  Badge,
   Paper,
   Table,
   TableBody,
@@ -31,29 +27,28 @@ import {
   Rating,
   Grid,
   Stack,
-  Tooltip,
+  Tabs,
+  Tab,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
 import {
   DirectionsCar,
-  Person,
   Star,
-  Place,
-  CheckCircle,
-  Schedule,
-  Menu,
-  History,
-  AccountCircle,
-  Payments,
-  Home,
-  Logout,
   VerifiedUser,
   DirectionsCarFilled,
   Phone,
   Email,
   AttachMoney,
   LocationOn,
-  Money,
   Timer,
+  History,
+  CheckCircle,
+  Dashboard,
+  Person,
+  TrendingUp,
+  Schedule,
+  LocalAtm,
 } from "@mui/icons-material";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -61,8 +56,25 @@ import "leaflet/dist/leaflet.css";
 import FlagIcon from "@mui/icons-material/Flag";
 import { useUser } from "../components/UserContext";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import { getRideSharingContract } from "../utils/web3";
 
-// Custom Icons
+// ---- DRIVER-SPECIFIC LOCALSTORAGE KEYS ----
+const DRIVER_RIDE_STATUS_KEY = "driverRideStatus";
+const DRIVER_CURRENT_RIDE_KEY = "driverCurrentRide";
+
+// Fix for default markers in react-leaflet
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+// Custom driver icon
 const driverIcon = new L.Icon({
   iconUrl:
     "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
@@ -74,11 +86,64 @@ const driverIcon = new L.Icon({
   shadowSize: [41, 41],
 });
 
-const RIDE_OFFER_TIMEOUT = 15;
+const RIDE_OFFER_TIMEOUT = 25;
+
+// status mapping shared with passenger side:
+// idle | searching | driver_assigned | in_progress | completed | cancelled | arrived
+const statusToStep = (status) => {
+  switch (status) {
+    case "driver_assigned":
+      return 0;
+    case "arrived":
+      return 1;
+    case "in_progress":
+      return 2;
+    case "completed":
+      return 3;
+    default:
+      return 0;
+  }
+};
+
+// Simple Map Component with error handling
+const SimpleMap = ({ center, driverPosition }) => {
+  const [map, setMap] = useState(null);
+
+  // Default center (Dhaka coordinates)
+  const defaultCenter = [23.8103, 90.4125];
+
+  return (
+    <MapContainer
+      center={center || defaultCenter}
+      zoom={13}
+      style={{ height: "100%", width: "100%" }}
+      whenCreated={setMap}
+    >
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      />
+      {driverPosition && (
+        <Marker
+          position={[driverPosition.lat, driverPosition.lng]}
+          icon={driverIcon}
+        >
+          <Popup>
+            <Typography variant="body2">
+              <strong>Your Current Position</strong>
+            </Typography>
+          </Popup>
+        </Marker>
+      )}
+    </MapContainer>
+  );
+};
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
-  const { user, setUser } = useUser();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const { user } = useUser();
   const driver = user || {};
 
   // Profile Data
@@ -96,93 +161,268 @@ export default function DriverDashboard() {
     totalRides = 0,
   } = driver;
 
-  // State Management
-  const [isOnline, setIsOnline] = useState(false);
+  // ---- STATE ----
+  const [isOnline, setIsOnline] = useState(
+    localStorage.getItem("driverOnline") === "true"
+  );
   const [rideOffer, setRideOffer] = useState(null);
   const [offerTimer, setOfferTimer] = useState(RIDE_OFFER_TIMEOUT);
   const [showOfferModal, setShowOfferModal] = useState(false);
+
   const [rideStatus, setRideStatus] = useState("idle");
   const [rideData, setRideData] = useState(null);
+  const [rideStep, setRideStep] = useState(0);
+
   const [driverPosition, setDriverPosition] = useState(null);
   const [rideHistory, setRideHistory] = useState(
-    JSON.parse(localStorage.getItem("driverRideHistory")) || []
+    JSON.parse(localStorage.getItem("driverRideHistory") || "[]")
   );
   const [driverEarnings, setDriverEarnings] = useState(
     parseFloat(localStorage.getItem("driverEarnings")) || 0
   );
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rideStep, setRideStep] = useState(0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [passengerRating, setPassengerRating] = useState(null);
+  const [mapKey, setMapKey] = useState(Date.now()); // Key to force map re-render
 
   const watchIdRef = useRef(null);
   const offerTimerRef = useRef(null);
 
-  // Format joined date
   const joinedDate = dateOfBirth
     ? new Date(dateOfBirth).toLocaleDateString()
     : new Date().toLocaleDateString();
 
-  // Geolocation Tracking
+  // ---- REHYDRATE DRIVER RIDE STATE ON MOUNT ----
+  useEffect(() => {
+    try {
+      const storedStatus =
+        localStorage.getItem(DRIVER_RIDE_STATUS_KEY) || "idle";
+      const storedRide =
+        JSON.parse(localStorage.getItem(DRIVER_CURRENT_RIDE_KEY) || "null") ||
+        null;
+
+      const sharedStatus = localStorage.getItem("rideStatus") || "idle";
+      const sharedRide =
+        JSON.parse(localStorage.getItem("currentRide") || "null") || null;
+
+      const DRIVER_RELEVANT_STATUSES = new Set([
+        "driver_assigned",
+        "arrived",
+        "in_progress",
+        "completed",
+        "cancelled",
+      ]);
+
+      let finalStatus = storedStatus;
+      let finalRide = storedRide;
+
+      if (
+        !storedRide &&
+        sharedRide &&
+        DRIVER_RELEVANT_STATUSES.has(sharedStatus)
+      ) {
+        finalStatus = sharedStatus;
+        finalRide = sharedRide;
+      }
+
+      setRideStatus(finalStatus);
+      setRideData(finalRide);
+    } catch (e) {
+      console.error("Failed to rehydrate driver ride state:", e);
+    }
+  }, []);
+
+  // Calculate real-time stats from localStorage data
+  const calculateTodayStats = () => {
+    const today = new Date().toDateString();
+    let todayEarnings = 0;
+    let todayRides = 0;
+
+    rideHistory.forEach((ride) => {
+      const rideDate = new Date(ride.timestamp || ride.date).toDateString();
+      if (rideDate === today) {
+        todayRides++;
+        const fare = parseFloat(ride.fare) || 0;
+        todayEarnings += fare;
+      }
+    });
+
+    return { todayEarnings, todayRides };
+  };
+
+  const { todayEarnings, todayRides } = calculateTodayStats();
+
+  // ---- KEEP rideStep IN SYNC WHEN STATUS CHANGES ----
+  useEffect(() => {
+    setRideStep(statusToStep(rideStatus));
+  }, [rideStatus]);
+
+  // ---- GEOLOCATION TRACKING ----
   useEffect(() => {
     if (isOnline && "geolocation" in navigator) {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
-          setDriverPosition({
+          const pos = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          });
+          };
+          setDriverPosition(pos);
+          setMapKey(Date.now());
+
+          const sharedRide = JSON.parse(
+            localStorage.getItem("currentRide") || "null"
+          );
+          if (sharedRide) {
+            const updatedShared = { ...sharedRide, driverLocation: pos };
+            localStorage.setItem("currentRide", JSON.stringify(updatedShared));
+          }
+
+          const driverRide = JSON.parse(
+            localStorage.getItem(DRIVER_CURRENT_RIDE_KEY) || "null"
+          );
+          if (driverRide) {
+            const updatedDriverRide = { ...driverRide, driverLocation: pos };
+            localStorage.setItem(
+              DRIVER_CURRENT_RIDE_KEY,
+              JSON.stringify(updatedDriverRide)
+            );
+            setRideData(updatedDriverRide);
+          }
         },
-        (err) => console.error("Geolocation error:", err),
-        { enableHighAccuracy: true }
+        (err) => {
+          console.error("Geolocation error:", err);
+          toast.error("Failed to get location: " + err.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        }
       );
-    } else {
+    } else if ("geolocation" in navigator && watchIdRef.current != null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
-    return () => navigator.geolocation.clearWatch(watchIdRef.current);
+
+    return () => {
+      if ("geolocation" in navigator && watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
   }, [isOnline]);
 
-  // Ride Request Simulation
+  // ---- RIDE REQUEST POLLING (pull from passenger localStorage) ----
   useEffect(() => {
-    if (!isOnline || rideStatus !== "idle") return;
+    if (!isOnline) return;
 
-    const checkForRides = setInterval(() => {
-      const passengerRide = JSON.parse(localStorage.getItem("currentRide"));
-      const rideState = localStorage.getItem("rideStatus");
+    const checkForRides = () => {
+      try {
+        const passengerRide = JSON.parse(
+          localStorage.getItem("currentRide") || "null"
+        );
+        const rideState = localStorage.getItem("rideStatus");
+        const driverState =
+          localStorage.getItem(DRIVER_RIDE_STATUS_KEY) || "idle";
 
-      if (
-        passengerRide &&
-        rideState === "searching" &&
-        !passengerRide.driverAccepted
-      ) {
-        setRideOffer(passengerRide);
-        setShowOfferModal(true);
-        setOfferTimer(RIDE_OFFER_TIMEOUT);
-      }
-    }, 3000);
+        // driver is busy -> ignore
+        if (driverState !== "idle" || rideData) return;
 
-    return () => clearInterval(checkForRides);
-  }, [isOnline, rideStatus]);
-
-  // Ride Offer Timer
-  useEffect(() => {
-    if (showOfferModal) {
-      offerTimerRef.current = setInterval(() => {
-        setOfferTimer((prev) => {
-          if (prev <= 1) {
-            handleRejectRide();
-            return RIDE_OFFER_TIMEOUT;
+        if (
+          passengerRide &&
+          rideState === "searching" &&
+          !passengerRide.driverAccepted
+        ) {
+          // only open modal once
+          if (!showOfferModal) {
+            setRideOffer(passengerRide);
+            setOfferTimer(RIDE_OFFER_TIMEOUT);
+            setShowOfferModal(true);
           }
-          return prev - 1;
-        });
-      }, 1000);
+        }
+      } catch (error) {
+        console.error("Error checking for rides:", error);
+      }
+    };
+
+    const interval = setInterval(checkForRides, 3000);
+    // run immediately once so you don't wait for first 3s tick
+    checkForRides();
+
+    return () => clearInterval(interval);
+  }, [isOnline, showOfferModal, rideData]);
+
+  // ---- RIDE OFFER TIMER ----
+  useEffect(() => {
+    if (!showOfferModal) {
+      if (offerTimerRef.current) {
+        clearInterval(offerTimerRef.current);
+        offerTimerRef.current = null;
+      }
+      return;
     }
-    return () => clearInterval(offerTimerRef.current);
+
+    offerTimerRef.current = setInterval(() => {
+      setOfferTimer((prev) => {
+        if (prev <= 1) {
+          handleRejectRide();
+          return RIDE_OFFER_TIMEOUT;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (offerTimerRef.current) {
+        clearInterval(offerTimerRef.current);
+        offerTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showOfferModal]);
 
-  // Ride Handling Functions
-  const handleAcceptRide = () => {
+  // ---- HANDLERS ----
+
+  const handleToggleOnline = () => {
+    const next = !isOnline;
+    setIsOnline(next);
+    localStorage.setItem("driverOnline", String(next));
+
+    // when going online, ensure driver status is idle if no active ride
+    if (next) {
+      const hasCurrentDriverRide = localStorage.getItem(
+        DRIVER_CURRENT_RIDE_KEY
+      );
+      if (!hasCurrentDriverRide) {
+        setRideStatus("idle");
+        localStorage.setItem(DRIVER_RIDE_STATUS_KEY, "idle");
+      }
+      toast.success("You're now online and ready to accept rides!");
+    } else {
+      toast.info("You're now offline");
+    }
+  };
+
+  const handleAcceptRide = async () => {
+    if (!rideOffer) return;
+
+    const currentRideId = localStorage.getItem("currentRideId");
+    if (!currentRideId) {
+      toast.error("No on-chain rideId found for this request.");
+      return;
+    }
+
+    try {
+      const contract = await getRideSharingContract(true);
+      toast.info("Accepting ride on-chain…");
+      const tx = await contract.matchRide(currentRideId);
+      await tx.wait();
+      toast.success("Ride accepted on-chain.");
+    } catch (err) {
+      console.error("matchRide failed:", err);
+      toast.error(`Failed to accept ride: ${err.message || err.toString()}`);
+      return;
+    }
+
     const driverInfo = {
       name: fullName,
       rating,
@@ -199,38 +439,109 @@ export default function DriverDashboard() {
       ...rideOffer,
       driverAccepted: true,
       driver: driverInfo,
+      status: "driver_assigned",
+      driverLocation: driverPosition || rideOffer.pickupLocation || null,
     };
 
+    // DRIVER-SPECIFIC STATE
+    localStorage.setItem(DRIVER_CURRENT_RIDE_KEY, JSON.stringify(updatedRide));
+    localStorage.setItem(DRIVER_RIDE_STATUS_KEY, "driver_assigned");
+
+    // SHARED STATE FOR PASSENGER SIDE
     localStorage.setItem("currentRide", JSON.stringify(updatedRide));
-    localStorage.setItem("rideStatus", "accepted");
+    localStorage.setItem("rideStatus", "driver_assigned");
 
     setShowOfferModal(false);
-    setRideData(rideOffer);
-    setRideStatus("accepted");
+    setRideData(updatedRide);
+    setRideStatus("driver_assigned");
     setRideStep(0);
     setRideOffer(null);
+
+    toast.success(`Ride accepted! Heading to ${rideOffer.pickup}`);
   };
 
   const handleRejectRide = () => {
     setShowOfferModal(false);
     setRideOffer(null);
+    setOfferTimer(RIDE_OFFER_TIMEOUT); // reset timer
     setRideStatus("idle");
+
+    localStorage.setItem(DRIVER_RIDE_STATUS_KEY, "idle");
+    // shared status back to idle so passenger knows it was rejected
+    localStorage.setItem("rideStatus", "idle");
+
+    toast.info("Ride request declined");
   };
 
-  const nextRideStep = () => {
-    if (rideStep < 3) {
-      setRideStep(rideStep + 1);
-      const statuses = ["accepted", "arrived", "in_progress", "completed"];
-      setRideStatus(statuses[rideStep + 1]);
+  const nextRideStep = async () => {
+    if (rideStep >= 3 || !rideData) return;
 
-      if (rideStep === 2) {
+    const currentRideId = localStorage.getItem("currentRideId");
+    const statuses = ["driver_assigned", "arrived", "in_progress", "completed"];
+
+    if (!currentRideId) {
+      toast.warn("No on-chain rideId found. Updating local status only.");
+    }
+
+    try {
+      if (currentRideId) {
+        const contract = await getRideSharingContract(true);
+
+        // 0->1: Arrived (UI only)
+        // 1->2: startRide()
+        // 2->3: completeRide()
+        if (rideStep === 1) {
+          toast.info("Starting ride on-chain…");
+          const tx = await contract.startRide(currentRideId);
+          await tx.wait();
+          toast.success("Ride started on-chain.");
+        } else if (rideStep === 2) {
+          toast.info("Completing ride on-chain…");
+          const tx = await contract.completeRide(currentRideId);
+          await tx.wait();
+          toast.success("Ride completed on-chain.");
+        }
+      }
+
+      const nextStep = Math.min(rideStep + 1, 3);
+      const nextStatus = statuses[nextStep];
+
+      setRideStep(nextStep);
+      setRideStatus(nextStatus);
+
+      localStorage.setItem(DRIVER_RIDE_STATUS_KEY, nextStatus);
+      localStorage.setItem("rideStatus", nextStatus); // shared
+
+      const updatedRide = {
+        ...rideData,
+        status: nextStatus,
+        driverLocation: driverPosition || rideData.driverLocation || null,
+      };
+      setRideData(updatedRide);
+      localStorage.setItem(
+        DRIVER_CURRENT_RIDE_KEY,
+        JSON.stringify(updatedRide)
+      );
+      localStorage.setItem("currentRide", JSON.stringify(updatedRide));
+
+      if (nextStatus === "completed") {
         setShowRatingModal(true);
       }
+    } catch (err) {
+      console.error("Ride step tx failed:", err);
+      toast.error(
+        `Failed to update on-chain status: ${err.message || err.toString()}`
+      );
     }
   };
 
   const finishRide = () => {
-    const earnings = rideData?.fare || 0;
+    if (!rideData) {
+      setShowRatingModal(false);
+      return;
+    }
+
+    const earnings = parseFloat(rideData?.fare) || 0;
     const newEarnings = driverEarnings + earnings;
 
     const finishedRide = {
@@ -247,445 +558,590 @@ export default function DriverDashboard() {
     localStorage.setItem("driverRideHistory", JSON.stringify(newHistory));
     localStorage.setItem("driverEarnings", newEarnings.toString());
 
+    // ✅ clear driver-specific ride only
+    localStorage.removeItem(DRIVER_CURRENT_RIDE_KEY);
+    localStorage.setItem(DRIVER_RIDE_STATUS_KEY, "idle");
+
+    // ❌ DO NOT clear shared ride here;
+    // passenger still needs to see completed ride + pay button
+
     setRideData(null);
     setRideStatus("idle");
     setRideStep(0);
     setShowRatingModal(false);
     setPassengerRating(null);
+
+    toast.success(`Ride completed! Earned ৳${earnings.toFixed(2)}`);
   };
 
-  // Sidebar Component
-  const Sidebar = (
-    <Drawer
-      variant="permanent"
+  // ---- MODERN STATS CARD ----
+  const StatsCard = ({ icon, title, value, subtitle, color = "primary" }) => (
+    <Card
       sx={{
-        width: 280,
-        flexShrink: 0,
-        "& .MuiDrawer-paper": {
-          width: 280,
-          boxSizing: "border-box",
-          position: "fixed",
-          top: 68,
-          height: "calc(100% - 64px)",
-          background: "linear-gradient(135deg, #43cea2 0%, #185a9d 100%)",
-          color: "#fff",
-          borderRight: "none",
+        height: "100%",
+        background: "white",
+        borderRadius: 3,
+        boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+        border: "1px solid rgba(0,0,0,0.05)",
+        transition: "all 0.3s ease",
+        "&:hover": {
+          transform: "translateY(-4px)",
+          boxShadow: "0 8px 30px 0 rgba(0,0,0,0.15)",
         },
       }}
     >
-      <Box sx={{ p: 3, textAlign: "center" }}>
-        <Avatar
-          src={picture}
-          sx={{
-            width: 80,
-            height: 80,
-            mx: "auto",
-            mb: 2,
-            border: "2px solid #fff",
-          }}
-        />
-        <Typography variant="h6" fontWeight={600}>
-          {fullName}
-        </Typography>
-        <Typography variant="body2" color="rgba(255,255,255,0.7)">
-          {email}
-        </Typography>
-        <Chip
-          icon={<VerifiedUser fontSize="small" />}
-          label="Verified Driver"
-          sx={{
-            mt: 1.5,
-            backgroundColor: "rgba(255,255,255,0.2)",
-            color: "#fff",
-          }}
-        />
-      </Box>
-      <List>
-        {/* Dashboard */}
-        <ListItem
-          button
-          selected={activeTab === "dashboard"}
-          onClick={() => setActiveTab("dashboard")}
-          sx={{
-            "&.Mui-selected": {
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-            },
-            "&:hover": {
-              backgroundColor: "rgba(255, 255, 255, 0.1)",
-            },
-          }}
-        >
-          <ListItemIcon
-            sx={{
-              color: "#fff",
-              transition: "transform 0.3s ease, box-shadow 0.3s ease",
-              borderRadius: "50%",
-              ...(activeTab === "dashboard" && {
-                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
-              }),
-              "&:hover": { transform: "scale(1.2)" },
-            }}
-          >
-            <Home />
-          </ListItemIcon>
-          <ListItemText
-            primary="Dashboard"
-            primaryTypographyProps={{ fontWeight: 500 }}
-            sx={{ color: "#fff" }}
-          />
-        </ListItem>
-
-        {/* Ride History */}
-        <ListItem
-          button
-          selected={activeTab === "ride-history"}
-          onClick={() => {
-            setActiveTab("ride-history");
-            navigate("/ride-history");
-          }}
-          sx={{
-            "&.Mui-selected": {
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-            },
-            "&:hover": {
-              backgroundColor: "rgba(255, 255, 255, 0.1)",
-            },
-          }}
-        >
-          <ListItemIcon
-            sx={{
-              color: "#fff",
-              transition: "transform 0.3s ease, box-shadow 0.3s ease",
-              borderRadius: "50%",
-              ...(activeTab === "ride-history" && {
-                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
-              }),
-              "&:hover": { transform: "scale(1.2)" },
-            }}
-          >
-            <Badge
-              badgeContent={rideHistory.length}
-              color="secondary"
-              sx={{
-                "& .MuiBadge-badge": {
-                  background: "linear-gradient(90deg, #43cea2, #185a9d)",
-                  color: "#fff",
-                  fontWeight: "bold",
-                  border: "2px solid #fff",
-                  animation: "pulse 1.8s infinite ease-in-out",
-                },
-                "@keyframes pulse": {
-                  "0%": { transform: "scale(1)" },
-                  "50%": { transform: "scale(1.1)" },
-                  "100%": { transform: "scale(1)" },
-                },
-              }}
-            >
-              <History />
-            </Badge>
-          </ListItemIcon>
-          <ListItemText
-            primary="Ride History"
-            primaryTypographyProps={{ fontWeight: 500 }}
-            sx={{ color: "#fff" }}
-          />
-        </ListItem>
-
-        {/* Profile */}
-        <ListItem
-          button
-          selected={activeTab === "profile"}
-          onClick={() => setActiveTab("profile")}
-          sx={{
-            "&.Mui-selected": {
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-            },
-            "&:hover": {
-              backgroundColor: "rgba(255, 255, 255, 0.1)",
-            },
-          }}
-        >
-          <ListItemIcon
-            sx={{
-              color: "#fff",
-              transition: "transform 0.3s ease, box-shadow 0.3s ease",
-              borderRadius: "50%",
-              ...(activeTab === "profile" && {
-                boxShadow: "0 0 10px 3px rgba(67, 206, 162, 0.8)",
-              }),
-              "&:hover": { transform: "scale(1.2)" },
-            }}
-          >
-            <AccountCircle />
-          </ListItemIcon>
-          <ListItemText
-            primary="Profile"
-            primaryTypographyProps={{ fontWeight: 500 }}
-            sx={{ color: "#fff" }}
-          />
-        </ListItem>
-
-        {/* Logout */}
-        <ListItem
-          button
-          onClick={() => {
-            setUser(null);
-            localStorage.removeItem("user");
-            navigate("/login");
-          }}
-          sx={{
-            "&:hover": {
-              backgroundColor: "rgba(255, 255, 255, 0.1)",
-            },
-          }}
-        >
-          <ListItemIcon
-            sx={{
-              color: "#fff",
-              transition: "transform 0.3s ease",
-              "&:hover": { transform: "scale(1.2)" },
-            }}
-          >
-            <Logout />
-          </ListItemIcon>
-          <ListItemText
-            primary="Logout"
-            primaryTypographyProps={{ fontWeight: 500 }}
-            sx={{ color: "#fff" }}
-          />
-        </ListItem>
-      </List>
-    </Drawer>
-  );
-
-  // Dashboard Stats Cards
-  const StatsCard = ({ icon, title, value, color }) => (
-    <Card sx={{ height: "100%" }}>
-      <CardContent>
+      <CardContent sx={{ p: 3 }}>
         <Stack direction="row" alignItems="center" spacing={2}>
-          <Avatar sx={{ bgcolor: `${color}.light`, color: `${color}.dark` }}>
+          <Avatar
+            sx={{
+              bgcolor: `${color}.light`,
+              color: `${color}.main`,
+              width: 60,
+              height: 60,
+            }}
+          >
             {icon}
           </Avatar>
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              {title}
-            </Typography>
-            <Typography variant="h6" fontWeight={600}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h4" fontWeight={700} color="text.primary">
               {value}
             </Typography>
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+              {title}
+            </Typography>
+            {subtitle && (
+              <Typography variant="caption" color="text.secondary">
+                {subtitle}
+              </Typography>
+            )}
           </Box>
         </Stack>
       </CardContent>
     </Card>
   );
 
-  // Main Content Renderer
+  // ---- TAB NAVIGATION ----
+  const TabNavigation = (
+    <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 4 }}>
+      <Tabs
+        value={activeTab}
+        onChange={(e, newValue) => setActiveTab(newValue)}
+        sx={{
+          "& .MuiTab-root": {
+            fontWeight: 600,
+            fontSize: "1rem",
+            minWidth: 120,
+            py: 2,
+            mx: 1,
+          },
+        }}
+      >
+        <Tab
+          value="dashboard"
+          label="Dashboard"
+          icon={<Dashboard />}
+          iconPosition="start"
+        />
+        <Tab
+          value="history"
+          label="Ride History"
+          icon={<History />}
+          iconPosition="start"
+        />
+        <Tab
+          value="profile"
+          label="Profile"
+          icon={<Person />}
+          iconPosition="start"
+        />
+      </Tabs>
+    </Box>
+  );
+
+  // ---- MAIN TAB RENDER ----
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
         return (
           <Box>
-            <Grid container spacing={3} mb={3}>
-              <Grid item xs={12} md={4}>
+            {/* Stats Overview */}
+            <Grid container spacing={3} mb={4}>
+              <Grid item xs={12} md={3}>
                 <StatsCard
-                  icon={<AttachMoney />}
+                  icon={<LocalAtm />}
                   title="Total Earnings"
-                  value={`৳${driverEarnings.toFixed(2)}`}
+                  value={`৳${parseFloat(driverEarnings).toFixed(2)}`}
+                  subtitle="All time earnings"
                   color="success"
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <StatsCard
                   icon={<DirectionsCar />}
                   title="Total Rides"
                   value={rideHistory.length}
+                  subtitle="Completed rides"
+                  color="primary"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <StatsCard
+                  icon={<TrendingUp />}
+                  title="Today's Earnings"
+                  value={`৳${parseFloat(todayEarnings).toFixed(2)}`}
+                  subtitle="From today's rides"
                   color="info"
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <StatsCard
-                  icon={<Star />}
-                  title="Your Rating"
-                  value={rating}
+                  icon={<Schedule />}
+                  title="Today's Rides"
+                  value={todayRides}
+                  subtitle="Rides completed today"
                   color="warning"
                 />
               </Grid>
             </Grid>
 
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" fontWeight={600} mb={2}>
-                  Your Location
-                </Typography>
-                <Box sx={{ height: 300, borderRadius: 2, overflow: "hidden" }}>
-                  <MapContainer
-                    center={driverPosition || { lat: 23.8103, lng: 90.4125 }}
-                    zoom={13}
-                    style={{ height: "100%", width: "100%" }}
-                  >
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    />
-                    {driverPosition && (
-                      <Marker position={driverPosition} icon={driverIcon}>
-                        <Popup>Your Current Position</Popup>
-                      </Marker>
-                    )}
-                  </MapContainer>
-                </Box>
-                <Button
-                  variant={isOnline ? "outlined" : "contained"}
-                  color={isOnline ? "error" : "success"}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  onClick={() => setIsOnline(!isOnline)}
-                  startIcon={isOnline ? <CheckCircle /> : <Timer />}
+            {/* Map and Status Section */}
+            <Grid container spacing={3}>
+              <Grid item xs={12} lg={8}>
+                <Card
+                  sx={{
+                    borderRadius: 3,
+                    boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+                    mb: 3,
+                  }}
                 >
-                  {isOnline ? "Go Offline" : "Go Online"}
-                </Button>
-              </CardContent>
-            </Card>
+                  <CardContent sx={{ p: 3 }}>
+                    <Typography
+                      variant="h6"
+                      fontWeight={600}
+                      mb={2}
+                      color="text.primary"
+                    >
+                      Live Location Tracking
+                    </Typography>
+                    <Box
+                      sx={{ height: 400, borderRadius: 2, overflow: "hidden" }}
+                    >
+                      <SimpleMap
+                        key={mapKey}
+                        center={
+                          driverPosition
+                            ? [driverPosition.lat, driverPosition.lng]
+                            : null
+                        }
+                        driverPosition={driverPosition}
+                      />
+                    </Box>
+                    <Box
+                      sx={{ mt: 2, p: 2, bgcolor: "grey.50", borderRadius: 1 }}
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        {driverPosition
+                          ? `Current location: ${driverPosition.lat.toFixed(
+                              6
+                            )}, ${driverPosition.lng.toFixed(6)}`
+                          : "Location not available. Please enable location services."}
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
 
-            {rideData && rideStatus !== "idle" && (
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" fontWeight={600} mb={2}>
-                    Current Ride with {rideData.passengerName}
-                  </Typography>
+              <Grid item xs={12} lg={4}>
+                {/* Online Status Card */}
+                <Card
+                  sx={{
+                    borderRadius: 3,
+                    boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+                    mb: 3,
+                  }}
+                >
+                  <CardContent sx={{ p: 3, textAlign: "center" }}>
+                    <Box
+                      sx={{
+                        width: 80,
+                        height: 80,
+                        borderRadius: "50%",
+                        background: isOnline
+                          ? "linear-gradient(135deg, #4CAF50, #8BC34A)"
+                          : "linear-gradient(135deg, #f44336, #FF9800)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mx: "auto",
+                        mb: 2,
+                      }}
+                    >
+                      {isOnline ? (
+                        <CheckCircle sx={{ fontSize: 40, color: "white" }} />
+                      ) : (
+                        <Timer sx={{ fontSize: 40, color: "white" }} />
+                      )}
+                    </Box>
+                    <Typography
+                      variant="h6"
+                      fontWeight={600}
+                      color="text.primary"
+                      gutterBottom
+                    >
+                      {isOnline ? "You're Online" : "You're Offline"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" mb={3}>
+                      {isOnline
+                        ? "Ready to accept ride requests"
+                        : "Go online to start receiving rides"}
+                    </Typography>
+                    <Button
+                      variant={isOnline ? "outlined" : "contained"}
+                      color={isOnline ? "error" : "success"}
+                      fullWidth
+                      onClick={handleToggleOnline}
+                      startIcon={isOnline ? <CheckCircle /> : <Timer />}
+                      sx={{
+                        borderRadius: 2,
+                        fontWeight: 600,
+                        py: 1.5,
+                      }}
+                    >
+                      {isOnline ? "Go Offline" : "Go Online"}
+                    </Button>
+                  </CardContent>
+                </Card>
 
-                  <Stepper
-                    activeStep={rideStep}
-                    alternativeLabel
-                    sx={{ mb: 3 }}
-                  >
-                    {["Accepted", "Arrived", "In Progress", "Completed"].map(
-                      (label) => (
+                {/* Quick Stats */}
+                <Card
+                  sx={{
+                    borderRadius: 3,
+                    boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+                  }}
+                >
+                  <CardContent sx={{ p: 3 }}>
+                    <Typography
+                      variant="h6"
+                      fontWeight={600}
+                      mb={2}
+                      color="text.primary"
+                    >
+                      Performance Summary
+                    </Typography>
+                    <Stack spacing={2}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          Average Rating
+                        </Typography>
+                        <Box sx={{ display: "flex", alignItems: "center" }}>
+                          <Star sx={{ color: "gold", mr: 0.5 }} />
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            color="text.primary"
+                          >
+                            {rating}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          Completion Rate
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="text.primary"
+                        >
+                          {rideHistory.length > 0 ? "100%" : "0%"}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          Response Time
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="text.primary"
+                        >
+                          {isOnline ? "< 2min" : "N/A"}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Current Ride Section */}
+            {rideData &&
+              rideStatus !== "idle" &&
+              rideStatus !== "completed" && (
+                <Card
+                  sx={{
+                    mt: 3,
+                    borderRadius: 3,
+                    boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+                  }}
+                >
+                  <CardContent sx={{ p: 3 }}>
+                    <Typography
+                      variant="h6"
+                      fontWeight={600}
+                      mb={2}
+                      color="text.primary"
+                    >
+                      Active Ride with {rideData.passengerName || "Passenger"}
+                    </Typography>
+
+                    <Stepper
+                      activeStep={rideStep}
+                      alternativeLabel
+                      sx={{ mb: 4 }}
+                    >
+                      {[
+                        "Driver Assigned",
+                        "Arrived",
+                        "In Progress",
+                        "Completed",
+                      ].map((label) => (
                         <Step key={label}>
                           <StepLabel>{label}</StepLabel>
                         </Step>
-                      )
-                    )}
-                  </Stepper>
+                      ))}
+                    </Stepper>
 
-                  <Grid container spacing={2} mb={3}>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="body1" fontWeight={500}>
-                        <LocationOn
-                          color="primary"
-                          sx={{ verticalAlign: "middle", mr: 1 }}
-                        />
-                        {rideData.pickup}
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        ml={3.5}
-                      >
-                        Pickup Location
-                      </Typography>
+                    <Grid container spacing={2} mb={3}>
+                      <Grid item xs={12} md={6}>
+                        <Card
+                          variant="outlined"
+                          sx={{ background: "rgba(0,0,0,0.02)" }}
+                        >
+                          <CardContent>
+                            <Typography
+                              variant="subtitle2"
+                              color="text.secondary"
+                              gutterBottom
+                            >
+                              Pickup Location
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              fontWeight={500}
+                              color="text.primary"
+                            >
+                              <LocationOn
+                                sx={{
+                                  verticalAlign: "middle",
+                                  mr: 1,
+                                  color: "primary.main",
+                                }}
+                              />
+                              {rideData.pickup}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Card
+                          variant="outlined"
+                          sx={{ background: "rgba(0,0,0,0.02)" }}
+                        >
+                          <CardContent>
+                            <Typography
+                              variant="subtitle2"
+                              color="text.secondary"
+                              gutterBottom
+                            >
+                              Dropoff Location
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              fontWeight={500}
+                              color="text.primary"
+                            >
+                              <FlagIcon
+                                sx={{
+                                  verticalAlign: "middle",
+                                  mr: 1,
+                                  color: "success.main",
+                                }}
+                              />
+                              {rideData.dropoff}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Card
+                          variant="outlined"
+                          sx={{ background: "rgba(0,0,0,0.02)" }}
+                        >
+                          <CardContent>
+                            <Typography
+                              variant="subtitle2"
+                              color="text.secondary"
+                              gutterBottom
+                            >
+                              Fare
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              fontWeight={500}
+                              color="text.primary"
+                            >
+                              <AttachMoney
+                                sx={{
+                                  verticalAlign: "middle",
+                                  mr: 1,
+                                  color: "warning.main",
+                                }}
+                              />
+                              ৳{parseFloat(rideData.fare || 0).toFixed(2)}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Card
+                          variant="outlined"
+                          sx={{ background: "rgba(0,0,0,0.02)" }}
+                        >
+                          <CardContent>
+                            <Typography
+                              variant="subtitle2"
+                              color="text.secondary"
+                              gutterBottom
+                            >
+                              Distance
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              fontWeight={500}
+                              color="text.primary"
+                            >
+                              <DirectionsCar
+                                sx={{
+                                  verticalAlign: "middle",
+                                  mr: 1,
+                                  color: "info.main",
+                                }}
+                              />
+                              {rideData.distance}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="body1" fontWeight={500}>
-                        <FlagIcon
-                          color="success"
-                          sx={{ verticalAlign: "middle", mr: 1 }}
-                        />
-                        {rideData.dropoff}
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        ml={3.5}
-                      >
-                        Dropoff Location
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="body1" fontWeight={500}>
-                        <Money
-                          color="primary"
-                          sx={{ verticalAlign: "middle", mr: 1 }}
-                        />
-                        ৳{rideData.fare}
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        ml={3.5}
-                      >
-                        Fare
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="body1" fontWeight={500}>
-                        <DirectionsCar
-                          color="info"
-                          sx={{ verticalAlign: "middle", mr: 1 }}
-                        />
-                        {rideData.distance}
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        ml={3.5}
-                      >
-                        Distance
-                      </Typography>
-                    </Grid>
-                  </Grid>
 
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    fullWidth
-                    onClick={nextRideStep}
-                    disabled={rideStep === 3}
-                  >
-                    {
-                      [
-                        "Arrived at Pickup",
-                        "Start Ride",
-                        "Finish Ride",
-                        "Completed",
-                      ][rideStep]
-                    }
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      onClick={nextRideStep}
+                      disabled={rideStep === 3}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {
+                        [
+                          "Arrived at Pickup",
+                          "Start Ride",
+                          "Finish Ride",
+                          "Completed",
+                        ][rideStep]
+                      }
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
           </Box>
         );
 
       case "history":
         return (
-          <Card>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} mb={3}>
-                <History
-                  color="primary"
-                  sx={{ verticalAlign: "middle", mr: 1 }}
-                />
+          <Card
+            sx={{
+              borderRadius: 3,
+              boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography
+                variant="h6"
+                fontWeight={600}
+                mb={3}
+                color="text.primary"
+              >
                 Ride History
               </Typography>
 
               {rideHistory.length === 0 ? (
-                <Paper sx={{ p: 4, textAlign: "center" }}>
-                  <Typography color="text.secondary" mb={2}>
-                    You haven't completed any rides yet
+                <Paper
+                  sx={{
+                    p: 6,
+                    textAlign: "center",
+                    background: "rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <DirectionsCar
+                    sx={{ fontSize: 64, color: "text.secondary", mb: 2 }}
+                  />
+                  <Typography variant="h6" color="text.secondary" mb={2}>
+                    No rides completed yet
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" mb={3}>
+                    Start driving to see your ride history here
                   </Typography>
                   <Button
-                    variant="outlined"
-                    startIcon={<DirectionsCar />}
-                    onClick={() => setIsOnline(true)}
+                    variant="contained"
+                    startIcon={<CheckCircle />}
+                    onClick={() => {
+                      setActiveTab("dashboard");
+                      setIsOnline(true);
+                      localStorage.setItem("driverOnline", "true");
+                      localStorage.setItem(DRIVER_RIDE_STATUS_KEY, "idle");
+                    }}
+                    sx={{
+                      borderRadius: 2,
+                      fontWeight: 600,
+                    }}
                   >
-                    Go Online to Get Rides
+                    Go Online
                   </Button>
                 </Paper>
               ) : (
-                <TableContainer component={Paper}>
+                <TableContainer
+                  component={Paper}
+                  sx={{
+                    borderRadius: 2,
+                    boxShadow: "none",
+                  }}
+                >
                   <Table>
-                    <TableHead sx={{ bgcolor: "background.default" }}>
+                    <TableHead sx={{ background: "rgba(0,0,0,0.02)" }}>
                       <TableRow>
                         <TableCell sx={{ fontWeight: 600 }}>Trip</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>
@@ -701,7 +1157,7 @@ export default function DriverDashboard() {
                       {rideHistory.map((ride, index) => (
                         <TableRow key={index} hover>
                           <TableCell>
-                            <Typography fontWeight={500}>
+                            <Typography fontWeight={500} color="text.primary">
                               {ride.pickup || "Unknown"}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -709,7 +1165,7 @@ export default function DriverDashboard() {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography>
+                            <Typography color="text.primary">
                               {new Date(
                                 ride.timestamp || ride.date
                               ).toLocaleDateString()}
@@ -724,8 +1180,8 @@ export default function DriverDashboard() {
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography fontWeight={600}>
-                              ৳{(ride.fare || 0).toFixed(2)}
+                            <Typography fontWeight={600} color="success.main">
+                              ৳{parseFloat(ride.fare || 0).toFixed(2)}
                             </Typography>
                           </TableCell>
                           <TableCell>
@@ -739,6 +1195,7 @@ export default function DriverDashboard() {
                                   : "default"
                               }
                               size="small"
+                              sx={{ fontWeight: 500 }}
                             />
                           </TableCell>
                         </TableRow>
@@ -751,143 +1208,66 @@ export default function DriverDashboard() {
           </Card>
         );
 
-      case "earnings":
-        return (
-          <Card>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} mb={3}>
-                <Payments
-                  color="primary"
-                  sx={{ verticalAlign: "middle", mr: 1 }}
-                />
-                Earnings Summary
-              </Typography>
-
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Card
-                    sx={{ bgcolor: "success.light", color: "success.dark" }}
-                  >
-                    <CardContent>
-                      <Typography variant="body2">Total Earnings</Typography>
-                      <Typography variant="h4" fontWeight={700}>
-                        ৳{driverEarnings.toFixed(2)}
-                      </Typography>
-                      <Typography variant="caption">
-                        All time earnings
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="body2">Recent Earnings</Typography>
-                      <Typography variant="h5" fontWeight={600} mb={1}>
-                        ৳{(rideHistory[0]?.fare || 0).toFixed(2)}
-                      </Typography>
-                      <Typography variant="caption">
-                        Last ride on{" "}
-                        {rideHistory[0]
-                          ? new Date(
-                              rideHistory[0].timestamp
-                            ).toLocaleDateString()
-                          : "No rides yet"}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="body1" fontWeight={600} mb={2}>
-                        Earnings Breakdown
-                      </Typography>
-                      <TableContainer>
-                        <Table>
-                          <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Date
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Trip
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }} align="right">
-                                Earnings
-                              </TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {rideHistory.slice(0, 5).map((ride, index) => (
-                              <TableRow key={index}>
-                                <TableCell>
-                                  {new Date(
-                                    ride.timestamp || ride.date
-                                  ).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell>
-                                  {ride.pickup} to {ride.dropoff}
-                                </TableCell>
-                                <TableCell align="right">
-                                  ৳{(ride.fare || 0).toFixed(2)}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                            {rideHistory.length === 0 && (
-                              <TableRow>
-                                <TableCell colSpan={3} align="center">
-                                  No ride history available
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        );
-
       case "profile":
         return (
-          <Card>
-            <CardContent>
+          <Card
+            sx={{
+              borderRadius: 3,
+              boxShadow: "0 4px 20px 0 rgba(0,0,0,0.1)",
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
               <Box textAlign="center" mb={4}>
                 <Avatar
                   src={picture}
                   sx={{
-                    width: 100,
-                    height: 100,
+                    width: 120,
+                    height: 120,
                     mx: "auto",
-                    mb: 2,
-                    border: "3px solid",
+                    mb: 3,
+                    border: "4px solid",
                     borderColor: "primary.main",
                   }}
                 />
-                <Typography variant="h5" fontWeight={700}>
+                <Typography variant="h4" fontWeight={700} color="text.primary">
                   {fullName}
                 </Typography>
                 <Chip
                   icon={<VerifiedUser fontSize="small" />}
                   label="Verified Driver"
                   color="primary"
-                  sx={{ mt: 1, mb: 1 }}
+                  sx={{ mt: 2, mb: 2, fontWeight: 600 }}
                 />
-                <Typography color="text.secondary">
-                  <Star sx={{ color: "gold", verticalAlign: "middle" }} />{" "}
-                  {rating} ({totalRides} rides)
-                </Typography>
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  gap={1}
+                >
+                  <Star sx={{ color: "gold" }} />
+                  <Typography variant="h6" color="text.primary">
+                    {rating}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ ml: 1 }}
+                  >
+                    ({rideHistory.length || totalRides} rides)
+                  </Typography>
+                </Box>
               </Box>
 
-              <Grid container spacing={2}>
+              <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <Card variant="outlined">
                     <CardContent>
-                      <Typography variant="subtitle1" fontWeight={600} mb={2}>
+                      <Typography
+                        variant="h6"
+                        fontWeight={600}
+                        mb={2}
+                        color="text.primary"
+                      >
                         Personal Information
                       </Typography>
                       <List dense>
@@ -916,7 +1296,12 @@ export default function DriverDashboard() {
                 <Grid item xs={12} md={6}>
                   <Card variant="outlined">
                     <CardContent>
-                      <Typography variant="subtitle1" fontWeight={600} mb={2}>
+                      <Typography
+                        variant="h6"
+                        fontWeight={600}
+                        mb={2}
+                        color="text.primary"
+                      >
                         Vehicle Information
                       </Typography>
                       <List dense>
@@ -953,11 +1338,17 @@ export default function DriverDashboard() {
                 </Grid>
               </Grid>
 
-              <Box textAlign="center" mt={3}>
+              <Box textAlign="center" mt={4}>
                 <Button
-                  variant="outlined"
+                  variant="contained"
                   color="primary"
                   onClick={() => navigate("/profile/edit")}
+                  sx={{
+                    borderRadius: 2,
+                    px: 4,
+                    py: 1.5,
+                    fontWeight: 600,
+                  }}
                 >
                   Edit Profile
                 </Button>
@@ -971,172 +1362,174 @@ export default function DriverDashboard() {
     }
   };
 
-  // Modals
-  const RideOfferModal = (
-    <Modal open={showOfferModal} onClose={handleRejectRide}>
-      <Box
-        sx={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: 400,
-          bgcolor: "background.paper",
-          boxShadow: 24,
-          p: 4,
-          borderRadius: 2,
-          outline: "none",
-        }}
-      >
-        <Box textAlign="center" mb={3}>
-          <Avatar
-            src={rideOffer?.passengerPhoto}
-            sx={{
-              width: 80,
-              height: 80,
-              mx: "auto",
-              mb: 2,
-              border: "2px solid",
-              borderColor: "primary.main",
-            }}
-          />
-          <Typography variant="h6" fontWeight={600}>
-            New Ride Request!
-          </Typography>
-          <Typography color="text.secondary">
-            {rideOffer?.passengerName || "Passenger"}
-          </Typography>
-        </Box>
-
-        <Box mb={3}>
-          <Typography>
-            <LocationOn
-              color="primary"
-              sx={{ verticalAlign: "middle", mr: 1 }}
-            />
-            <strong>Pickup:</strong> {rideOffer?.pickup}
-          </Typography>
-          <Typography>
-            <FlagIcon color="success" sx={{ verticalAlign: "middle", mr: 1 }} />
-            <strong>Dropoff:</strong> {rideOffer?.dropoff}
-          </Typography>
-          <Typography>
-            <AttachMoney sx={{ verticalAlign: "middle", mr: 1 }} />
-            <strong>Fare:</strong> ৳{rideOffer?.fare}
-          </Typography>
-        </Box>
-
-        <LinearProgress
-          variant="determinate"
-          value={(offerTimer / RIDE_OFFER_TIMEOUT) * 100}
-          sx={{ height: 8, borderRadius: 4, mb: 2 }}
-          color={offerTimer <= 5 ? "error" : "primary"}
-        />
-        <Typography
-          align="center"
-          color={offerTimer <= 5 ? "error" : "text.secondary"}
-        >
-          Respond in {offerTimer}s
-        </Typography>
-
-        <Box mt={3} display="flex" justifyContent="center" gap={2}>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleRejectRide}
-            sx={{ flex: 1 }}
-          >
-            Reject
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={handleAcceptRide}
-            sx={{ flex: 1 }}
-          >
-            Accept
-          </Button>
-        </Box>
-      </Box>
-    </Modal>
-  );
-
-  const RatingModal = (
-    <Modal open={showRatingModal} onClose={() => setShowRatingModal(false)}>
-      <Box
-        sx={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: 350,
-          bgcolor: "background.paper",
-          boxShadow: 24,
-          p: 4,
-          borderRadius: 2,
-          outline: "none",
-          textAlign: "center",
-        }}
-      >
-        <Typography variant="h6" mb={2}>
-          Rate Your Passenger
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          How was your ride with {rideData?.passengerName}?
-        </Typography>
-
-        <Rating
-          value={passengerRating}
-          onChange={(event, newValue) => setPassengerRating(newValue)}
-          size="large"
-          sx={{ fontSize: "2.5rem", mb: 3 }}
-        />
-
-        <Button
-          variant="contained"
-          fullWidth
-          disabled={!passengerRating}
-          onClick={finishRide}
-        >
-          Submit Rating
-        </Button>
-      </Box>
-    </Modal>
-  );
-
   return (
-    <Box sx={{ display: "flex" }}>
-      {Sidebar}
-
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-        <Container maxWidth="lg">
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
-            mb={3}
-          >
-            <Typography variant="h5" fontWeight={700}>
+    <Box sx={{ flexGrow: 1, minHeight: "100vh", background: "#f8f9fa" }}>
+      <Box component="main" sx={{ p: 3 }}>
+        <Container maxWidth="xl">
+          <Box mb={4}>
+            <Typography
+              variant="h4"
+              fontWeight={700}
+              color="text.primary"
+              gutterBottom
+            >
               {activeTab === "dashboard" && "Driver Dashboard"}
               {activeTab === "history" && "Ride History"}
-              {activeTab === "earnings" && "Earnings"}
               {activeTab === "profile" && "My Profile"}
             </Typography>
-            <IconButton
-              color="inherit"
-              onClick={() => setDrawerOpen(!drawerOpen)}
-              sx={{ display: { md: "none" } }}
-            >
-              <Menu />
-            </IconButton>
+            <Typography variant="body1" color="text.secondary">
+              {activeTab === "dashboard" &&
+                "Manage your rides and track your performance"}
+              {activeTab === "history" &&
+                "View your complete ride history and earnings"}
+              {activeTab === "profile" &&
+                "Manage your driver profile and vehicle information"}
+            </Typography>
           </Box>
 
+          {TabNavigation}
           {renderContent()}
         </Container>
       </Box>
 
-      {RideOfferModal}
-      {RatingModal}
+      {/* Ride Offer Modal */}
+      <Modal open={showOfferModal} onClose={handleRejectRide}>
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 400,
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            p: 4,
+            borderRadius: 3,
+            outline: "none",
+          }}
+        >
+          <Box textAlign="center" mb={3}>
+            <Avatar
+              src={rideOffer?.passengerPhoto}
+              sx={{
+                width: 80,
+                height: 80,
+                mx: "auto",
+                mb: 2,
+                border: "3px solid",
+                borderColor: "primary.main",
+              }}
+            />
+            <Typography variant="h6" fontWeight={600}>
+              New Ride Request!
+            </Typography>
+            <Typography color="text.secondary">
+              {rideOffer?.passengerName || "Passenger"}
+            </Typography>
+          </Box>
+
+          <Box mb={3}>
+            <Typography>
+              <LocationOn
+                color="primary"
+                sx={{ verticalAlign: "middle", mr: 1 }}
+              />
+              <strong>Pickup:</strong> {rideOffer?.pickup}
+            </Typography>
+            <Typography>
+              <FlagIcon
+                color="success"
+                sx={{ verticalAlign: "middle", mr: 1 }}
+              />
+              <strong>Dropoff:</strong> {rideOffer?.dropoff}
+            </Typography>
+            <Typography>
+              <AttachMoney sx={{ verticalAlign: "middle", mr: 1 }} />
+              <strong>Fare:</strong> ৳
+              {parseFloat(rideOffer?.fare || 0).toFixed(2)}
+            </Typography>
+          </Box>
+
+          <LinearProgress
+            variant="determinate"
+            value={(offerTimer / RIDE_OFFER_TIMEOUT) * 100}
+            sx={{ height: 8, borderRadius: 4, mb: 2 }}
+            color={offerTimer <= 5 ? "error" : "primary"}
+          />
+          <Typography
+            align="center"
+            color={offerTimer <= 5 ? "error" : "text.secondary"}
+          >
+            Respond in {offerTimer}s
+          </Typography>
+
+          <Box mt={3} display="flex" justifyContent="center" gap={2}>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={handleRejectRide}
+              sx={{ flex: 1 }}
+            >
+              Reject
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              onClick={handleAcceptRide}
+              sx={{ flex: 1 }}
+            >
+              Accept
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
+
+      {/* Passenger Rating Modal */}
+      <Modal open={showRatingModal} onClose={finishRide}>
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 400,
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            p: 4,
+            borderRadius: 3,
+            outline: "none",
+            textAlign: "center",
+          }}
+        >
+          <Typography variant="h6" fontWeight={600} mb={2}>
+            Rate Your Passenger
+          </Typography>
+          <Typography color="text.secondary" mb={3}>
+            How was your ride with {rideData?.passengerName || "the passenger"}?
+          </Typography>
+
+          <Rating
+            value={passengerRating}
+            onChange={(event, newValue) => setPassengerRating(newValue)}
+            size="large"
+            sx={{ fontSize: "3rem", mb: 3 }}
+          />
+
+          <Button
+            variant="contained"
+            fullWidth
+            disabled={!passengerRating}
+            onClick={finishRide}
+            sx={{
+              borderRadius: 2,
+              py: 1.5,
+              fontWeight: 600,
+            }}
+          >
+            Submit Rating
+          </Button>
+        </Box>
+      </Modal>
     </Box>
   );
 }

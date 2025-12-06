@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  Box,
-  TextField,
-  Stack,
-  InputAdornment,
-  Autocomplete,
-} from "@mui/material";
+import { TextField, Stack, InputAdornment, Autocomplete } from "@mui/material";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import FlagIcon from "@mui/icons-material/Flag";
 
@@ -32,18 +26,20 @@ const LocationInputPanel = ({
       {/* Pickup Field */}
       <Autocomplete
         freeSolo
-        options={safePickupSuggestions.map((opt) =>
-          typeof opt === "string" ? opt : opt.label
-        )}
+        options={safePickupSuggestions}
+        getOptionLabel={(opt) =>
+          typeof opt === "string" ? opt : opt.label || ""
+        }
         inputValue={pickup || ""}
-        onInputChange={(e, val) => onPickupChange(val)}
+        onInputChange={(e, val) => {
+          onPickupChange(val);
+        }}
         onChange={(e, val) => {
-          if (typeof val === "string") {
-            onPickupSelect(val);
-          } else {
-            const selected = safePickupSuggestions.find((s) => s.label === val);
-            onPickupSelect(selected || val);
-          }
+          // val can be:
+          // - { label, coords } when selecting a suggestion
+          // - string when user types and presses Enter
+          // - null when cleared
+          onPickupSelect(val ?? "");
         }}
         renderInput={(params) => (
           <TextField
@@ -66,20 +62,16 @@ const LocationInputPanel = ({
       {/* Dropoff Field */}
       <Autocomplete
         freeSolo
-        options={safeDropoffSuggestions.map((opt) =>
-          typeof opt === "string" ? opt : opt.label
-        )}
+        options={safeDropoffSuggestions}
+        getOptionLabel={(opt) =>
+          typeof opt === "string" ? opt : opt.label || ""
+        }
         inputValue={dropoff || ""}
-        onInputChange={(e, val) => onDropoffChange(val)}
+        onInputChange={(e, val) => {
+          onDropoffChange(val);
+        }}
         onChange={(e, val) => {
-          if (typeof val === "string") {
-            onDropoffSelect(val);
-          } else {
-            const selected = safeDropoffSuggestions.find(
-              (s) => s.label === val
-            );
-            onDropoffSelect(selected || val);
-          }
+          onDropoffSelect(val ?? "");
         }}
         renderInput={(params) => (
           <TextField

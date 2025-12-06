@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -11,15 +11,20 @@ import {
   Divider,
   Chip,
   Box,
+  Button,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/Home";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { UserContext } from "./UserContext";
+
+import { useUser } from "./UserContext"; // or "../context/UserContext"
+import { EXPECTED_CHAIN_ID } from "../utils/web3";
 
 export default function NavBar() {
-  const { user, setUser } = useContext(UserContext);
+  const { user, setUser, account, chainId, connectWallet, logout } = useUser();
+
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
 
@@ -27,12 +32,23 @@ export default function NavBar() {
   const currentRole = user?.currentRole || "Passenger";
   const roles = user?.roles || ["Passenger"];
 
+  // Short wallet address
+  const shortAddress = account
+    ? `${account.slice(0, 6)}...${account.slice(-4)}`
+    : null;
+
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
 
+  const navigateTo = (path) => {
+    navigate(path);
+    handleMenuClose();
+  };
+
   const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
+    // If your context has a disconnect/reset wallet, call it here as well
+    // e.g., disconnectWallet();
+    logout();
     toast.info("Logged out successfully");
     navigate("/");
     handleMenuClose();
@@ -40,6 +56,7 @@ export default function NavBar() {
 
   const handleSwitchRole = () => {
     if (!isLoggedIn) return;
+
     const otherRoles = roles.filter((r) => r !== currentRole);
     if (otherRoles.length > 0) {
       const newRole = otherRoles[0];
@@ -47,8 +64,7 @@ export default function NavBar() {
       setUser(updatedUser);
       localStorage.setItem("user", JSON.stringify(updatedUser));
       toast.success(`Switched to ${newRole} mode`);
-      handleMenuClose();
-      navigate(`/${newRole.toLowerCase()}`);
+      navigateTo(`/${newRole.toLowerCase()}`);
     } else {
       toast.info("No other role to switch to.");
     }
@@ -63,6 +79,25 @@ export default function NavBar() {
     toast.info("Please select Driver role during registration");
     handleMenuClose();
   };
+
+  const handleConnectWalletClick = () => {
+    if (!isLoggedIn) {
+      // This shouldn’t be reachable now since button is hidden when logged out,
+      // but keep it safe:
+      toast.info("Please login first to connect your wallet");
+      navigate("/login");
+      return;
+    }
+
+    connectWallet();
+  };
+
+  const walletTooltip =
+    account && chainId
+      ? chainId === EXPECTED_CHAIN_ID
+        ? `Connected: ${account}`
+        : `Connected to chain ${chainId}, expected ${EXPECTED_CHAIN_ID}`
+      : "Connect your wallet to NexTrip";
 
   return (
     <AppBar
@@ -108,13 +143,62 @@ export default function NavBar() {
             <Chip
               label={currentRole}
               size="small"
-              sx={{ bgcolor: "#00c896", color: "#fff", fontWeight: 700, ml: 1 }}
+              sx={{
+                bgcolor: "#00c896",
+                color: "#fff",
+                fontWeight: 700,
+                ml: 1,
+              }}
             />
           )}
         </Box>
 
-        {/* User Menu */}
+        {/* Right side: Wallet + User Menu */}
         <Box display="flex" alignItems="center" gap={1.5}>
+          {/* 🔹 Wallet Section (VISIBLE ONLY IF LOGGED IN) */}
+          {isLoggedIn && (
+            <>
+              {account ? (
+                <Tooltip title={walletTooltip}>
+                  <Chip
+                    icon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
+                    label={shortAddress}
+                    sx={{
+                      bgcolor: "rgba(0,0,0,0.2)",
+                      color: "#fff",
+                      fontWeight: 600,
+                    }}
+                  />
+                </Tooltip>
+              ) : (
+                <Tooltip title={walletTooltip}>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      color="inherit"
+                      size="small"
+                      startIcon={<AccountBalanceWalletIcon />}
+                      onClick={handleConnectWalletClick}
+                      sx={{
+                        borderColor: "rgba(255,255,255,0.8)",
+                        color: "#fff",
+                        textTransform: "none",
+                        fontWeight: 600,
+                        "&:hover": {
+                          borderColor: "#fff",
+                          backgroundColor: "rgba(0,0,0,0.12)",
+                        },
+                      }}
+                    >
+                      Connect Wallet
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+            </>
+          )}
+
+          {/* Avatar (if logged in) */}
           {isLoggedIn && user?.picture && (
             <Tooltip title={user.email}>
               <Avatar
@@ -129,9 +213,13 @@ export default function NavBar() {
               />
             </Tooltip>
           )}
+
+          {/* Menu Icon (always visible) */}
           <IconButton onClick={handleMenuOpen} sx={{ color: "#fff" }}>
             <MenuIcon sx={{ fontSize: 30 }} />
           </IconButton>
+
+          {/* Menu */}
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
@@ -147,7 +235,7 @@ export default function NavBar() {
             }}
           >
             {/* Home button for all roles */}
-            <MenuItem onClick={() => navigate("/")}>
+            <MenuItem onClick={() => navigateTo("/")}>
               <HomeIcon sx={{ mr: 1 }} />
               Homepage
             </MenuItem>
@@ -157,28 +245,28 @@ export default function NavBar() {
               <>
                 {/* Dashboard Links */}
                 {currentRole === "Passenger" && (
-                  <MenuItem onClick={() => navigate("/passenger")}>
+                  <MenuItem onClick={() => navigateTo("/passenger")}>
                     Passenger Dashboard
                   </MenuItem>
                 )}
                 {currentRole === "Driver" && (
-                  <MenuItem onClick={() => navigate("/driver")}>
+                  <MenuItem onClick={() => navigateTo("/driver")}>
                     Driver Dashboard
                   </MenuItem>
                 )}
                 {currentRole === "Admin" && (
-                  <MenuItem onClick={() => navigate("/admin")}>
+                  <MenuItem onClick={() => navigateTo("/admin")}>
                     Admin Dashboard
                   </MenuItem>
                 )}
 
                 {/* Common Features */}
-                <MenuItem onClick={() => navigate("/ride-history")}>
+                <MenuItem onClick={() => navigateTo("/ride-history")}>
                   Ride History
                 </MenuItem>
 
                 {currentRole === "Passenger" && (
-                  <MenuItem onClick={() => navigate("/ride-in-progress")}>
+                  <MenuItem onClick={() => navigateTo("/ride-in-progress")}>
                     Ride In Progress
                   </MenuItem>
                 )}
@@ -192,7 +280,7 @@ export default function NavBar() {
 
                 <Divider />
 
-                <MenuItem onClick={() => navigate("/profile")}>
+                <MenuItem onClick={() => navigateTo("/profile")}>
                   Profile
                 </MenuItem>
                 <MenuItem
@@ -204,7 +292,7 @@ export default function NavBar() {
               </>
             ) : (
               <>
-                <MenuItem onClick={() => navigate("/login")}>Login</MenuItem>
+                <MenuItem onClick={() => navigateTo("/login")}>Login</MenuItem>
                 <MenuItem onClick={handleRegisterPassenger}>
                   Register as Passenger
                 </MenuItem>

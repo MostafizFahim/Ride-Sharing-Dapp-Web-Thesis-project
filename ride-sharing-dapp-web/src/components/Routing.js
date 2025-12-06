@@ -1,3 +1,4 @@
+// Routing.js
 import "leaflet-routing-machine";
 import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
@@ -10,22 +11,27 @@ const Routing = ({ pickupCoords, dropoffCoords, setDistanceKm }) => {
   useEffect(() => {
     if (!pickupCoords || !dropoffCoords || !map) return;
 
-    // Remove existing route if present
+    // Remove existing route/control if present
     if (routingLayerRef.current) {
-      map.removeLayer(routingLayerRef.current);
+      try {
+        map.removeControl(routingLayerRef.current);
+      } catch (e) {
+        console.warn("Failed to remove existing routing control:", e);
+      }
       routingLayerRef.current = null;
     }
+
+    // NOTE: your coords are [lng, lat] → Leaflet needs (lat, lng)
+    const from = L.latLng(pickupCoords[1], pickupCoords[0]);
+    const to = L.latLng(dropoffCoords[1], dropoffCoords[0]);
 
     const router = L.Routing.osrmv1({
       serviceUrl: "https://router.project-osrm.org/route/v1",
     });
 
-    const plan = L.Routing.plan(
-      [L.latLng(pickupCoords), L.latLng(dropoffCoords)],
-      {
-        createMarker: () => null,
-      }
-    );
+    const plan = L.Routing.plan([from, to], {
+      createMarker: () => null,
+    });
 
     const control = L.Routing.control({
       plan,
@@ -43,14 +49,16 @@ const Routing = ({ pickupCoords, dropoffCoords, setDistanceKm }) => {
     routingLayerRef.current = control;
 
     control.on("routesfound", (e) => {
-      const distance = e.routes[0].summary.totalDistance / 1000;
-      setDistanceKm(distance);
+      const distanceKm = e.routes[0].summary.totalDistance / 1000;
+      if (setDistanceKm) {
+        setDistanceKm(Number(distanceKm.toFixed(2)));
+      }
     });
 
     return () => {
-      if (routingLayerRef.current && map.hasLayer(routingLayerRef.current)) {
+      if (routingLayerRef.current) {
         try {
-          map.removeLayer(routingLayerRef.current);
+          map.removeControl(routingLayerRef.current);
         } catch (e) {
           console.warn("Safe cleanup failed:", e);
         }

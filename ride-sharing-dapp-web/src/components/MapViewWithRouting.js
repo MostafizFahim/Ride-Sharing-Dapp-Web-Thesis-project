@@ -1,3 +1,4 @@
+// MapViewWithRouting.js
 import React from "react";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import Routing from "./Routing";
@@ -8,20 +9,32 @@ const MapViewWithRouting = ({
   setDistanceKm,
   mapRef,
 }) => {
+  const dhakaCenter = [23.8103, 90.4125];
+
+  // your coords are [lng, lat] → Leaflet wants [lat, lng]
+  const pickupLatLng = pickupCoords && [pickupCoords[1], pickupCoords[0]];
+  const dropoffLatLng = dropoffCoords && [dropoffCoords[1], dropoffCoords[0]];
+
   return (
     <MapContainer
-      center={[23.8103, 90.4125]}
+      center={dhakaCenter}
       zoom={13}
       scrollWheelZoom={false}
       style={{ width: "100%", height: "100%" }}
-      ref={mapRef}
+      whenCreated={(map) => {
+        if (mapRef) {
+          mapRef.current = map;
+        }
+      }}
     >
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {pickupCoords && <Marker position={pickupCoords} />}
-      {dropoffCoords && <Marker position={dropoffCoords} />}
+
+      {pickupLatLng && <Marker position={pickupLatLng} />}
+      {dropoffLatLng && <Marker position={dropoffLatLng} />}
+
       {pickupCoords && dropoffCoords && (
         <Routing
           pickupCoords={pickupCoords}

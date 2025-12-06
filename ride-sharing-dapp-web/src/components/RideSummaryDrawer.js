@@ -11,9 +11,6 @@ import DriveEtaIcon from "@mui/icons-material/DriveEta";
 import RoomIcon from "@mui/icons-material/Room";
 import DirectionsIcon from "@mui/icons-material/Directions";
 import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
-import TimeIcon from "@mui/icons-material/Schedule";
-import LocationIcon from "@mui/icons-material/LocationOn";
-import CommuteIcon from "@mui/icons-material/Commute";
 
 const RideSummaryDrawer = ({
   pickup,
@@ -23,17 +20,21 @@ const RideSummaryDrawer = ({
   distanceKm,
   eta,
   fare,
-  onConfirmRide,
-  disabled,
 }) => {
   const pickupText =
     typeof pickup === "object" && pickup !== null
       ? pickup.label
       : pickup || "Not selected";
+
   const dropoffText =
     typeof dropoff === "object" && dropoff !== null
       ? dropoff.label
       : dropoff || "Not selected";
+
+  const hasValidDistance =
+    typeof distanceKm === "number" && !Number.isNaN(distanceKm);
+
+  const hasValidFare = fare !== null && fare !== undefined && fare !== "--";
 
   return (
     <Card
@@ -107,9 +108,7 @@ const RideSummaryDrawer = ({
             <DirectionsIcon color="action" fontSize="small" />
             <Typography variant="body2">
               <strong>Distance:</strong>{" "}
-              {distanceKm && !isNaN(distanceKm)
-                ? `${Number(distanceKm).toFixed(2)} km`
-                : "--"}
+              {hasValidDistance ? `${distanceKm.toFixed(2)} km` : "--"}
             </Typography>
           </Box>
 
@@ -128,7 +127,7 @@ const RideSummaryDrawer = ({
             <Typography variant="body2">
               <strong>Estimated Fare:</strong>{" "}
               <Box component="span" sx={{ color: "green", fontWeight: "bold" }}>
-                {fare && fare !== "--" ? `৳${fare}` : "--"}
+                {hasValidFare ? `৳${fare}` : "--"}
               </Box>
             </Typography>
           </Box>

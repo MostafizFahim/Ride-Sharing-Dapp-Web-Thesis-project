@@ -4,9 +4,9 @@ import {
   Typography,
   Paper,
   IconButton,
-  Divider,
   Chip,
   Button,
+  CircularProgress,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import axios from "axios";
@@ -30,7 +30,12 @@ import fareRates from "../config/fareConfig";
 import MapLibreMap from "../components/MapLibreMap";
 import { reverseGeocode } from "../utils/geoUtils";
 
-// ---- Styled UI Components ----
+import { useUser } from "../components/UserContext";
+import { getRideSharingContract } from "../utils/web3";
+import { ethers } from "ethers";
+
+const DEFAULT_DRIVER_ADDRESS = "0xc5116c11148c3d76f527d310f5142e3ff84745cf";
+
 const ColorfulPaper = styled(Paper)(({ theme }) => ({
   background: "linear-gradient(145deg, #ffffff, #f5f9ff)",
   border: "1px solid rgba(145, 158, 171, 0.12)",
@@ -53,7 +58,6 @@ export const ConfirmRideButton = styled(Button)(({ theme }) => ({
   "&:hover": {
     background: "linear-gradient(90deg, #185a9d 0%, #43cea2 100%)",
   },
-
   color: "white",
   fontWeight: "bold",
   fontSize: "1rem",
@@ -62,15 +66,9 @@ export const ConfirmRideButton = styled(Button)(({ theme }) => ({
   marginTop: theme.spacing(2),
   textTransform: "none",
   boxShadow: "0px 4px 15px rgba(58, 123, 213, 0.4)",
-  "&:hover": {
-    background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
-    // borderBottom: "4px solid #43cea2",
-  },
 }));
 
-// ---- Main Component ----
 const PassengerDashboard = () => {
-  const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
   const [pickup, setPickup] = useState("");
@@ -82,16 +80,18 @@ const PassengerDashboard = () => {
   const [rideType, setRideType] = useState("");
   const [vehicleType, setVehicleType] = useState("");
   const [distanceKm, setDistanceKm] = useState(null);
-  const [mapSelectMode, setMapSelectMode] = useState("dropoff"); // or "pickup"
   const [summaryOpen, setSummaryOpen] = useState(false);
 
   const [surgeMultiplier, setSurgeMultiplier] = useState(1.0);
   const [history, setHistory] = useState(
     JSON.parse(localStorage.getItem("rideHistory")) || []
   );
+  const [bookingLoading, setBookingLoading] = useState(false);
 
+  const { account } = useUser();
   const navigate = useNavigate();
 
+  // Auto-set pickup to current location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -118,19 +118,6 @@ const PassengerDashboard = () => {
       setSurgeMultiplier(1.0 + Math.random() * 0.5);
     }
   }, [pickupCoords, dropoffCoords]);
-
-  useEffect(() => {
-    window.setDropoffFromMap = async (coords) => {
-      setDropoffCoords(coords);
-      const [lng, lat] = coords;
-      const label = await reverseGeocode(lat, lng);
-      setDropoff(label);
-    };
-
-    return () => {
-      window.setDropoffFromMap = null; // Cleanup on unmount
-    };
-  }, []);
 
   const swapLocations = () => {
     if (!pickup || !dropoff) return;
@@ -183,39 +170,63 @@ const PassengerDashboard = () => {
       toast.error("Location lookup failed");
     }
   };
-  const reverseGeocode = async (lat, lon) => {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
-      );
-      const data = await res.json();
-      return data.display_name || "Selected Location";
-    } catch (err) {
-      console.error("Reverse geocoding failed:", err);
-      return "Selected Location";
-    }
-  };
 
+  /* ----------------------------------------------
+   ✅ FIXED FARE CALCULATION (now correct)
+  ---------------------------------------------- */
   const calculateFare = (distance) => {
-    const numericDistance = parseFloat(distance);
-    if (isNaN(numericDistance) || !rideType || !vehicleType) return 0;
-    const baseRate = fareRates[vehicleType]?.[rideType] || 1.5;
-    const flatFee = 5.0;
-    const minFare = 30.0;
-    const raw = numericDistance * baseRate * surgeMultiplier;
-    return Math.max(raw + flatFee, minFare).toFixed(2);
-  };
-  const handleMapClick = (coords) => {
-    setDropoffCoords(coords);
-    reverseGeocode(coords[1], coords[0]).then(setDropoff);
+    const numericDistance = Number(distance);
+    if (
+      !Number.isFinite(numericDistance) ||
+      numericDistance <= 0 ||
+      !rideType ||
+      !vehicleType
+    ) {
+      return null;
+    }
+
+    const perKmRate = fareRates[vehicleType]?.[rideType];
+    if (!perKmRate) return null;
+
+    const baseFee = 5; // flat
+    const minFare = 30;
+
+    let rawFare = numericDistance * perKmRate * surgeMultiplier + baseFee;
+
+    if (rawFare < minFare) rawFare = minFare;
+
+    return rawFare;
   };
 
-  const handlePickupClick = (coords) => {
-    setPickupCoords(coords);
-    reverseGeocode(coords[1], coords[0]).then(setPickup); // label
-  };
+  const vehicleSpeeds = { Car: 30, Bike: 40, CNG: 25 };
 
-  const handleConfirmRide = () => {
+  const hasDistance =
+    typeof distanceKm === "number" && !Number.isNaN(distanceKm);
+
+  const eta =
+    hasDistance && vehicleType
+      ? `${Math.ceil(
+          (distanceKm / (vehicleSpeeds[vehicleType] || 30)) * 60
+        )} mins`
+      : "--";
+
+  /* ----------------------------------------------
+   Fare Value + Display Fare
+  ---------------------------------------------- */
+  const fareValue =
+    hasDistance && rideType && vehicleType ? calculateFare(distanceKm) : null;
+
+  const fare = fareValue !== null ? fareValue.toFixed(2) : "--";
+
+  const locationsSelected = pickupCoords && dropoffCoords;
+  const selectionsValid = rideType && vehicleType;
+  const canConfirmRide =
+    locationsSelected && selectionsValid && hasDistance && !bookingLoading;
+
+  /* ----------------------------------------------
+   BLOCKCHAIN CONFIRM RIDE
+  ---------------------------------------------- */
+  const handleConfirmRide = async () => {
     if (!pickupCoords || !dropoffCoords) {
       toast.error("Please enter both pickup and dropoff locations.");
       return;
@@ -224,56 +235,116 @@ const PassengerDashboard = () => {
       toast.error("Please select both ride type and vehicle type.");
       return;
     }
-    const fareAmount = calculateFare(distanceKm);
-    const newRide = {
-      pickup,
-      dropoff,
-      pickupLocation: { lat: pickupCoords[1], lng: pickupCoords[0] },
-      dropoffLocation: { lat: dropoffCoords[1], lng: dropoffCoords[0] },
-      rideType,
-      vehicleType,
-      distance: distanceKm,
-      fare: fareAmount,
-      surge: surgeMultiplier,
-      timestamp: new Date().toISOString(),
-      rideId: `RIDE-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-      estimatedDuration: `${Math.ceil(
-        (distanceKm / (vehicleSpeeds[vehicleType] || 30)) * 60
-      )} mins`,
-      driver: {
-        name: "John Doe",
-        rating: 4.8,
-        photo: "https://randomuser.me/api/portraits/men/42.jpg",
-        vehicle: {
-          make:
-            vehicleType === "Car"
-              ? "Toyota"
-              : vehicleType === "Bike"
-              ? "Honda"
-              : "Bajaj",
-          model:
-            vehicleType === "Car"
-              ? "Camry"
-              : vehicleType === "Bike"
-              ? "CBR"
-              : "RE",
-          license: `${
-            vehicleType === "Car" ? "C" : vehicleType === "Bike" ? "B" : "3"
-          }${Math.random().toString().substr(2, 6)}`,
-          color: ["Blue", "Red", "White", "Black"][
-            Math.floor(Math.random() * 4)
-          ],
+    if (!hasDistance) {
+      toast.error("Waiting for route distance. Please try again in a moment.");
+      return;
+    }
+    if (!account) {
+      toast.error("Please connect your wallet first.");
+      return;
+    }
+
+    let driverAddress;
+    try {
+      driverAddress = ethers.getAddress(DEFAULT_DRIVER_ADDRESS);
+    } catch {
+      toast.error("Configured driver address is invalid.");
+      return;
+    }
+
+    setBookingLoading(true);
+
+    try {
+      const fareBDT = calculateFare(distanceKm);
+
+      if (!fareBDT || Number.isNaN(fareBDT)) {
+        toast.error("Calculated fare is invalid.");
+        return;
+      }
+
+      const displayFare = fareBDT.toFixed(2);
+
+      const ETH_PER_BDT = 1e-4;
+      const fareEth = fareBDT * ETH_PER_BDT;
+
+      const fareWei = ethers.parseEther(fareEth.toFixed(6));
+
+      const metadataURI = `ipfs://ride-${Date.now()}`;
+      const contract = await getRideSharingContract(true);
+
+      const tx = await contract.requestRide(
+        driverAddress,
+        fareWei,
+        metadataURI
+      );
+
+      toast.info("Ride request sent to blockchain…");
+      const receipt = await tx.wait();
+
+      let rideIdOnChain = null;
+      for (const log of receipt.logs) {
+        try {
+          const parsed = contract.interface.parseLog(log);
+          if (parsed && parsed.name === "RideRequested") {
+            rideIdOnChain = parsed.args.rideId.toString();
+            break;
+          }
+        } catch {}
+      }
+
+      const newRide = {
+        pickup,
+        dropoff,
+        pickupLocation: { lat: pickupCoords[1], lng: pickupCoords[0] },
+        dropoffLocation: { lat: dropoffCoords[1], lng: dropoffCoords[0] },
+        rideType,
+        vehicleType,
+        distance: distanceKm,
+        fare: displayFare,
+        surge: surgeMultiplier,
+        timestamp: new Date().toISOString(),
+        rideId:
+          rideIdOnChain ||
+          `RIDE-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+        estimatedDuration: eta,
+        driver: {
+          name: "John Doe",
+          rating: 4.8,
+          photo: "https://randomuser.me/api/portraits/men/42.jpg",
         },
-      },
-    };
-    const updatedHistory = [newRide, ...history.slice(0, 4)];
-    localStorage.setItem("rideHistory", JSON.stringify(updatedHistory));
-    localStorage.setItem("currentRide", JSON.stringify(newRide));
-    setHistory(updatedHistory);
-    localStorage.setItem("rideStatus", "searching");
-    toast.success("Ride confirmed! Finding your driver...");
-    navigate("/ride-in-progress");
+        txHash: receipt.hash,
+      };
+
+      const updatedHistory = [newRide, ...history.slice(0, 4)];
+      localStorage.setItem("rideHistory", JSON.stringify(updatedHistory));
+      localStorage.setItem("currentRide", JSON.stringify(newRide));
+      localStorage.setItem("rideStatus", "searching");
+
+      if (rideIdOnChain) {
+        localStorage.setItem("currentRideId", rideIdOnChain);
+      }
+
+      setHistory(updatedHistory);
+      toast.success("Ride confirmed!");
+      navigate("/ride-in-progress");
+    } catch (err) {
+      console.error("Confirm ride error:", err);
+
+      if (err.code === "INSUFFICIENT_FUNDS") {
+        toast.error("Insufficient balance");
+      } else if (
+        err.code === "USER_REJECTED" ||
+        err.code === "ACTION_REJECTED"
+      ) {
+        toast.error("Transaction rejected");
+      } else {
+        toast.error(`Failed: ${err.message || err.toString()}`);
+      }
+    } finally {
+      setBookingLoading(false);
+    }
   };
+
   const handleCancelRide = () => {
     setPickup("");
     setDropoff("");
@@ -286,19 +357,6 @@ const PassengerDashboard = () => {
     toast.info("Ride selection cancelled.");
   };
 
-  const vehicleSpeeds = { Car: 30, Bike: 40, CNG: 25 };
-  const eta =
-    distanceKm && vehicleType
-      ? `${Math.ceil(
-          (distanceKm / (vehicleSpeeds[vehicleType] || 30)) * 60
-        )} mins`
-      : "--";
-  const fare =
-    distanceKm && rideType && vehicleType ? calculateFare(distanceKm) : "--";
-
-  const locationsSelected = pickupCoords && dropoffCoords;
-  const selectionsValid = rideType && vehicleType;
-
   return (
     <Box
       sx={{
@@ -310,54 +368,13 @@ const PassengerDashboard = () => {
       }}
     >
       <MapLibreMap
-        mapRef={mapRef}
         pickupCoords={pickupCoords}
         dropoffCoords={dropoffCoords}
         setDistanceKm={setDistanceKm}
-        onMapClick={handleMapClick}
-        onPickupMapClick={handlePickupClick}
-        mapSelectMode={mapSelectMode} // ✅ pass it
         mapInstanceRef={mapInstanceRef}
       />
-      <Box
-        sx={{
-          position: "absolute",
-          top: 80,
-          right: 30,
-          zIndex: 1200,
-        }}
-      >
-        <Button
-          variant="contained"
-          onClick={() =>
-            setMapSelectMode((prev) =>
-              prev === "pickup" ? "dropoff" : "pickup"
-            )
-          }
-          sx={{
-            borderRadius: "8px",
-            background:
-              mapSelectMode === "pickup"
-                ? "linear-gradient(45deg, #43cea2, #185a9d)"
-                : "linear-gradient(45deg, #f7971e, #ffd200)",
-            color: "white",
-            fontWeight: "bold",
-            textTransform: "none",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
-            "&:hover": {
-              background:
-                mapSelectMode === "pickup"
-                  ? "linear-gradient(45deg, #185a9d, #43cea2)"
-                  : "linear-gradient(45deg, #ffd200, #f7971e)",
-            },
-          }}
-        >
-          🎯 Now Selecting:{" "}
-          {mapSelectMode === "pickup" ? "Pickup Location" : "Dropoff Location"}
-        </Button>
-      </Box>
 
-      {/* Location Panel */}
+      {/* LOCATION PANEL */}
       <Box
         component={motion.div}
         initial={{ opacity: 0, y: -30 }}
@@ -377,7 +394,6 @@ const PassengerDashboard = () => {
               p: 2.5,
               background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
               borderBottom: "4px solid #43cea2",
-
               color: "white",
             }}
           >
@@ -407,6 +423,7 @@ const PassengerDashboard = () => {
               <GradientButton onClick={swapLocations} size="small">
                 <SwapVertIcon fontSize="small" />
               </GradientButton>
+
               <GradientButton
                 onClick={() => {
                   if (navigator.geolocation) {
@@ -427,7 +444,7 @@ const PassengerDashboard = () => {
                             curve: 1.42,
                           });
                         }
-                      }, 300); // Optional delay to ensure map is ready
+                      }, 300);
                     });
                   }
                 }}
@@ -441,7 +458,7 @@ const PassengerDashboard = () => {
               </GradientButton>
 
               <Box sx={{ ml: "auto", display: "flex", alignItems: "center" }}>
-                {eta && (
+                {eta && eta !== "--" && (
                   <>
                     <ScheduleIcon color="primary" fontSize="small" />
                     <Typography variant="body2" color="text.secondary" ml={0.5}>
@@ -485,13 +502,12 @@ const PassengerDashboard = () => {
                   fetchCoordinates(val, setDropoff, setDropoffCoords);
                 }
               }}
-              aria-label-pickup="Pickup Location"
-              aria-label-dropoff="Dropoff Location"
             />
           </Box>
         </ColorfulPaper>
       </Box>
 
+      {/* VEHICLE + RIDE TYPE PANEL */}
       <AnimatePresence>
         {locationsSelected && (
           <Box
@@ -532,6 +548,7 @@ const PassengerDashboard = () => {
                     Select Vehicle & Ride Type
                   </Typography>
                 </Box>
+
                 <Box sx={{ p: 2 }}>
                   <VehicleSelectionPanel
                     rideType={rideType}
@@ -543,8 +560,8 @@ const PassengerDashboard = () => {
                     surgeMultiplier={surgeMultiplier}
                     onConfirmRide={handleConfirmRide}
                     onCancelRide={handleCancelRide}
-                    disabled={!selectionsValid}
-                    aria-label="Vehicle and Ride Type Selection Panel"
+                    disabled={!canConfirmRide}
+                    bookingLoading={bookingLoading}
                   />
                 </Box>
               </ColorfulPaper>
@@ -553,9 +570,7 @@ const PassengerDashboard = () => {
         )}
       </AnimatePresence>
 
-      {/* RIDE SUMMARY - Bottom Left */}
-      {/* Toggle Button */}
-
+      {/* SUMMARY TOGGLE */}
       <Box
         sx={{
           position: "absolute",
@@ -583,13 +598,14 @@ const PassengerDashboard = () => {
         </Button>
       </Box>
 
+      {/* SUMMARY DRAWER */}
       <AnimatePresence>
         {summaryOpen && (
           <Box
             key="ride-summary"
             sx={{
               position: "absolute",
-              bottom: 60, // above the toggle
+              bottom: 60,
               left: "50%",
               transform: "translateX(-50%)",
               width: { xs: "95vw", sm: 450 },
@@ -617,13 +633,30 @@ const PassengerDashboard = () => {
                   eta={eta}
                   fare={fare}
                   onConfirmRide={handleConfirmRide}
-                  disabled={!selectionsValid}
+                  disabled={!canConfirmRide}
+                  bookingLoading={bookingLoading}
                 />
               </ColorfulPaper>
             </motion.div>
           </Box>
         )}
       </AnimatePresence>
+
+      {/* GLOBAL LOADING */}
+      {bookingLoading && (
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      )}
     </Box>
   );
 };

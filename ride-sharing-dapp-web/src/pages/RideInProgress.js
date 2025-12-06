@@ -1,5 +1,5 @@
-// 🚘 RideInProgress.js — Two-Column Enhanced UI
-import React, { useEffect, useState } from "react";
+// 🚘 RideInProgress.js — Two-Column UI with On-Chain Sync + MapLibreMap + demo driver animation
+import React, { useEffect, useState, useRef } from "react";
 import {
   Box,
   Typography,
@@ -17,15 +17,6 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-} from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import {
   Star,
   Payment,
   Schedule,
@@ -36,20 +27,12 @@ import {
   Cancel,
 } from "@mui/icons-material";
 import { styled } from "@mui/material/styles";
+import { toast } from "react-toastify";
+import { ethers } from "ethers";
+import maplibregl from "maplibre-gl"; // 🔹 for driver markers
 
-// Leaflet icon fix
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-});
-
-const driverIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/4474/4474284.png",
-  iconSize: [40, 40],
-});
+import { getRideSharingContract, getProvider } from "../utils/web3";
+import MapLibreMap from "../components/MapLibreMap"; // reuse your map
 
 const StatusChip = styled(Chip)(({ status }) => ({
   fontWeight: 600,
@@ -62,6 +45,10 @@ const StatusChip = styled(Chip)(({ status }) => ({
       ? "#4caf50"
       : status === "completed"
       ? "#3f51b5"
+      : status === "driver_assigned"
+      ? "#2196f3"
+      : status === "cancelled"
+      ? "#f44336"
       : "#9e9e9e",
 }));
 
@@ -72,17 +59,40 @@ const RideInProgress = () => {
   const [eta, setEta] = useState("--");
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
-  const navigate = useNavigate();
 
+  // on-chain
+  const [onChainRideId, setOnChainRideId] = useState(null);
+  const [onChainStatus, setOnChainStatus] = useState(null);
+  const [onChainFareWei, setOnChainFareWei] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const navigate = useNavigate();
+  const mapInstanceRef = useRef(null); // MapLibreMap fills this ref
+
+  // 🔹 demo driver marker + searching markers
+  const driverMarkerRef = useRef(null);
+  const searchingMarkersRef = useRef([]);
+  const driverAnimIntervalRef = useRef(null);
+
+  // 1️⃣ Load local ride + on-chain rideId
   useEffect(() => {
-    const savedRide = JSON.parse(localStorage.getItem("currentRide")) || {};
+    const savedRide = JSON.parse(localStorage.getItem("currentRide")) || null;
     setRideData(savedRide);
+
+    const storedId = localStorage.getItem("currentRideId");
+    if (storedId) {
+      setOnChainRideId(String(storedId));
+    } else if (savedRide?.rideId && /^\d+$/.test(savedRide.rideId)) {
+      setOnChainRideId(String(savedRide.rideId));
+    }
   }, []);
 
+  // 2️⃣ Keep syncing local ride from localStorage (driver updates)
   useEffect(() => {
     const interval = setInterval(() => {
       const updatedRide = JSON.parse(localStorage.getItem("currentRide"));
       const updatedStatus = localStorage.getItem("rideStatus");
+
       if (!updatedRide || ["available", "idle"].includes(updatedStatus)) {
         navigate("/passenger");
         clearInterval(interval);
@@ -90,12 +100,16 @@ const RideInProgress = () => {
       }
       setRideData(updatedRide);
       setRideStatus(updatedStatus || "searching");
-      if (updatedRide.driverLocation)
+
+      if (updatedRide.driverLocation) {
         setDriverLocation(updatedRide.driverLocation);
+      }
     }, 2000);
+
     return () => clearInterval(interval);
   }, [navigate]);
 
+  // 3️⃣ Optional ETA sync (if DriverDashboard writes it)
   useEffect(() => {
     const interval = setInterval(() => {
       const updatedRide = JSON.parse(localStorage.getItem("currentRide"));
@@ -106,27 +120,211 @@ const RideInProgress = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // 4️⃣ On-chain polling: getRideDetails(rideId)
+  useEffect(() => {
+    if (!onChainRideId) return;
+
+    let cancelled = false;
+
+    const statusMap = (solStatus) => {
+      switch (solStatus) {
+        case "Requested":
+          return "searching";
+        case "Matched":
+          return "driver_assigned";
+        case "InProgress":
+          return "in_progress";
+        case "Completed":
+          return "completed";
+        case "Cancelled":
+          return "cancelled";
+        default:
+          return "searching";
+      }
+    };
+
+    const fetchFromChain = async () => {
+      try {
+        setSyncing(true);
+        const contract = await getRideSharingContract(false);
+        const ride = await contract.getRideDetails(onChainRideId);
+
+        if (cancelled) return;
+
+        setOnChainStatus(ride.status);
+        setOnChainFareWei(ride.fareWei);
+
+        const mapped = statusMap(ride.status);
+        setRideStatus(mapped);
+        localStorage.setItem("rideStatus", mapped);
+
+        if (rideData && !rideData.fare && ride.fareWei) {
+          try {
+            const fareEth = ethers.formatEther(ride.fareWei);
+            const updated = { ...rideData, fare: fareEth };
+            setRideData(updated);
+            localStorage.setItem("currentRide", JSON.stringify(updated));
+          } catch {
+            // ignore formatting issues
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync ride from chain:", err);
+      } finally {
+        if (!cancelled) setSyncing(false);
+      }
+    };
+
+    fetchFromChain();
+    const interval = setInterval(fetchFromChain, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onChainRideId]);
+
+  // 5️⃣ Demo: initialize driverLocation slightly away from pickup if we don't have one
+  useEffect(() => {
+    if (!rideData?.pickupLocation) return;
+    if (driverLocation) return;
+    // small offset near pickup
+    setDriverLocation({
+      lat: rideData.pickupLocation.lat + 0.002,
+      lng: rideData.pickupLocation.lng + 0.002,
+    });
+  }, [rideData, driverLocation]);
+
+  // 6️⃣ Demo: create/update driver marker on MapLibre when driverLocation changes
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !driverLocation) return;
+
+    const lngLat = [driverLocation.lng, driverLocation.lat];
+
+    if (!driverMarkerRef.current) {
+      const el = document.createElement("div");
+      el.style.width = "28px";
+      el.style.height = "28px";
+      el.style.borderRadius = "50%";
+      el.style.backgroundColor = "#185a9d";
+      el.style.border = "2px solid #ffffff";
+      el.style.boxShadow = "0 0 8px rgba(0,0,0,0.35)";
+      el.style.backgroundImage = "url('/car-icon.jpg')";
+      el.style.backgroundSize = "cover";
+      el.style.backgroundPosition = "center";
+
+      driverMarkerRef.current = new maplibregl.Marker({
+        element: el,
+        rotationAlignment: "map",
+      })
+        .setLngLat(lngLat)
+        .addTo(map);
+    } else {
+      driverMarkerRef.current.setLngLat(lngLat);
+    }
+
+    return () => {
+      // marker cleanup handled in global cleanup below
+    };
+  }, [driverLocation]);
+
+  // 7️⃣ Demo: show some random nearby drivers when status === "searching"
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !rideData?.pickupLocation) return;
+
+    // clear existing searching markers
+    searchingMarkersRef.current.forEach((m) => m.remove());
+    searchingMarkersRef.current = [];
+
+    if (rideStatus !== "searching") return;
+
+    const baseLng = rideData.pickupLocation.lng;
+    const baseLat = rideData.pickupLocation.lat;
+
+    for (let i = 0; i < 3; i++) {
+      const offsetLng = baseLng + (Math.random() - 0.5) * 0.01;
+      const offsetLat = baseLat + (Math.random() - 0.5) * 0.01;
+
+      const el = document.createElement("div");
+      el.style.width = "20px";
+      el.style.height = "20px";
+      el.style.borderRadius = "50%";
+      el.style.backgroundColor = "rgba(0,0,0,0.7)";
+      el.style.border = "2px solid #ffffff";
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([offsetLng, offsetLat])
+        .addTo(map);
+
+      searchingMarkersRef.current.push(marker);
+    }
+
+    return () => {
+      searchingMarkersRef.current.forEach((m) => m.remove());
+      searchingMarkersRef.current = [];
+    };
+  }, [rideStatus, rideData]);
+
+  // 8️⃣ Demo: animate driver from current position to dropoff when status === "in_progress"
   const animateDriverToDropoff = () => {
     if (!driverLocation || !rideData?.dropoffLocation) return;
-    const steps = 100,
-      intervalTime = 100;
-    const latDiff = (rideData.dropoffLocation.lat - driverLocation.lat) / steps;
-    const lngDiff = (rideData.dropoffLocation.lng - driverLocation.lng) / steps;
+
+    if (driverAnimIntervalRef.current) {
+      clearInterval(driverAnimIntervalRef.current);
+    }
+
+    const steps = 120;
+    const intervalTime = 120;
+
+    const startLat = driverLocation.lat;
+    const startLng = driverLocation.lng;
+    const endLat = rideData.dropoffLocation.lat;
+    const endLng = rideData.dropoffLocation.lng;
+
+    const latDiff = (endLat - startLat) / steps;
+    const lngDiff = (endLng - startLng) / steps;
+
     let i = 0;
-    const interval = setInterval(() => {
-      if (i >= steps) return clearInterval(interval);
-      setDriverLocation({
-        lat: driverLocation.lat + latDiff * i,
-        lng: driverLocation.lng + lngDiff * i,
-      });
+    driverAnimIntervalRef.current = setInterval(() => {
       i++;
+      setDriverLocation((prev) => {
+        if (!prev) return prev;
+        return {
+          lat: prev.lat + latDiff,
+          lng: prev.lng + lngDiff,
+        };
+      });
+      if (i >= steps) {
+        clearInterval(driverAnimIntervalRef.current);
+        driverAnimIntervalRef.current = null;
+      }
     }, intervalTime);
   };
 
   useEffect(() => {
-    if (rideStatus === "in_progress") animateDriverToDropoff();
-  }, [rideStatus]);
+    if (rideStatus === "in_progress") {
+      animateDriverToDropoff();
+    }
+  }, [rideStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Global cleanup for demo markers/animation
+  useEffect(() => {
+    return () => {
+      if (driverAnimIntervalRef.current) {
+        clearInterval(driverAnimIntervalRef.current);
+      }
+      if (driverMarkerRef.current) {
+        driverMarkerRef.current.remove();
+        driverMarkerRef.current = null;
+      }
+      searchingMarkersRef.current.forEach((m) => m.remove());
+      searchingMarkersRef.current = [];
+    };
+  }, []);
+
+  // 9️⃣ Cancel ride (local only for passenger)
   const handleCancel = () => {
     setRideData(null);
     localStorage.removeItem("currentRide");
@@ -134,8 +332,68 @@ const RideInProgress = () => {
     navigate("/passenger");
   };
 
-  const handlePayment = () => setShowRating(true);
+  // 🔟 Pay on-chain + then show rating modal
+  const handlePayment = async () => {
+    if (!onChainRideId) {
+      setShowRating(true);
+      return;
+    }
+
+    try {
+      const contract = await getRideSharingContract(true);
+      const ride = await contract.getRideDetails(onChainRideId);
+
+      console.log("On-chain ride details before payment:", ride);
+
+      const expectedFareWei = ride.fareWei;
+      const riderOnChain = ride.rider;
+
+      if (expectedFareWei === 0n) {
+        toast.error("On-chain fare is zero. Cannot pay for this ride.");
+        return;
+      }
+
+      const provider = await getProvider();
+      const accounts = await provider.send("eth_accounts", []);
+      const current = accounts?.[0]?.toLowerCase();
+      if (!current) {
+        toast.error("No connected wallet. Please connect MetaMask first.");
+        return;
+      }
+
+      if (riderOnChain.toLowerCase() !== current) {
+        toast.error(
+          `Only the rider can pay for this ride. Rider on-chain is ${riderOnChain}.`
+        );
+        return;
+      }
+
+      toast.info("Submitting on-chain payment…");
+
+      const tx = await contract.payForRide(onChainRideId, {
+        value: expectedFareWei,
+        gasLimit: 300000n,
+      });
+
+      console.log("payForRide tx sent:", tx.hash);
+      await tx.wait();
+      console.log("payForRide tx mined");
+
+      toast.success("Payment sent successfully on-chain ✅");
+      setShowRating(true);
+    } catch (err) {
+      console.error("payForRide failed:", err);
+      toast.error(
+        "Payment failed: " + (err?.reason || err?.message || "Unknown error")
+      );
+    }
+  };
+
   const handleSubmitRating = () => {
+    // ✅ After payment + rating, passenger cleans up shared ride
+    localStorage.removeItem("currentRide");
+    localStorage.setItem("rideStatus", "idle");
+
     setShowRating(false);
     setTimeout(() => navigate("/passenger"), 800);
   };
@@ -159,6 +417,23 @@ const RideInProgress = () => {
     );
   }
 
+  // convert saved {lat,lng} into [lng,lat] for MapLibreMap
+  const pickupCoords = [
+    rideData.pickupLocation.lng,
+    rideData.pickupLocation.lat,
+  ];
+  const dropoffCoords = [
+    rideData.dropoffLocation.lng,
+    rideData.dropoffLocation.lat,
+  ];
+
+  const driverVehicleText =
+    rideData.driver?.vehicle && rideData.driver.vehicle.make
+      ? `${rideData.driver.vehicle.make || ""} ${
+          rideData.driver.vehicle.model || ""
+        } • ${rideData.driver.vehicle.color || ""}`
+      : "Assigned Vehicle";
+
   return (
     <Box
       sx={{
@@ -170,42 +445,16 @@ const RideInProgress = () => {
           "radial-gradient(circle at center, #f5f9ff 0%, #e3eafd 100%)",
       }}
     >
-      {/* Left - Map */}
-      <Box sx={{ flex: 1, minHeight: 300 }}>
-        <MapContainer
-          center={rideData.pickupLocation}
-          zoom={13}
-          style={{ height: "100%", width: "100%" }}
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap contributors"
-          />
-          <Marker position={rideData.pickupLocation}>
-            <Popup>Pickup Location</Popup>
-          </Marker>
-          <Marker position={rideData.dropoffLocation}>
-            <Popup>Dropoff Location</Popup>
-          </Marker>
-          {driverLocation && (
-            <>
-              <Marker position={driverLocation} icon={driverIcon}>
-                <Popup>Your Driver</Popup>
-              </Marker>
-              <Polyline
-                positions={[
-                  [driverLocation.lat, driverLocation.lng],
-                  [rideData.dropoffLocation.lat, rideData.dropoffLocation.lng],
-                ]}
-                color="#3a7bd5"
-                weight={4}
-              />
-            </>
-          )}
-        </MapContainer>
+      {/* Left - MapLibre map */}
+      <Box sx={{ flex: 1, minHeight: 300, position: "relative" }}>
+        <MapLibreMap
+          pickupCoords={pickupCoords}
+          dropoffCoords={dropoffCoords}
+          setDistanceKm={undefined} // distance already known from previous page
+          mapInstanceRef={mapInstanceRef}
+        />
       </Box>
 
-      {/* Right - Ride Details */}
       {/* Right - Ride Details */}
       <Box
         sx={{
@@ -220,15 +469,24 @@ const RideInProgress = () => {
           Ride Summary
         </Typography>
 
-        <StatusChip
-          status={rideStatus}
-          label={rideStatus.replace("_", " ")}
-          size="medium"
-          sx={{
-            mb: 2,
-            background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
-          }}
-        />
+        <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+          <StatusChip
+            status={rideStatus}
+            label={rideStatus.replace("_", " ")}
+            size="medium"
+            sx={{
+              background: "linear-gradient(90deg, #43cea2 0%, #185a9d 100%)",
+            }}
+          />
+        </Stack>
+        {syncing && <CircularProgress size={16} thickness={5} sx={{ mb: 1 }} />}
+
+        {onChainRideId && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            On-chain Ride ID: #{onChainRideId}
+            {onChainStatus && ` • Status on chain: ${onChainStatus}`}
+          </Typography>
+        )}
 
         <Paper
           elevation={0}
@@ -261,12 +519,13 @@ const RideInProgress = () => {
                 <b>Vehicle:</b> {rideData.vehicleType}
               </Typography>
             </Box>
-            <Box display="flex" alignItems="center" gap={2}>
+            {/* Optional ETA */}
+            {/* <Box display="flex" alignItems="center" gap={2}>
               <Schedule color="primary" />
               <Typography>
                 <b>ETA:</b> {eta}
               </Typography>
-            </Box>
+            </Box> */}
             <Box display="flex" alignItems="center" gap={2}>
               <Payment color="primary" />
               <Typography>
@@ -302,8 +561,7 @@ const RideInProgress = () => {
                   size="small"
                 />
                 <Typography variant="body2" color="text.secondary">
-                  {rideData.driver.vehicle.make} {rideData.driver.vehicle.model}{" "}
-                  • {rideData.driver.vehicle.color}
+                  {driverVehicleText}
                 </Typography>
               </Box>
               <IconButton
@@ -367,6 +625,7 @@ const RideInProgress = () => {
         </Stack>
       </Box>
 
+      {/* Rating modal */}
       <Modal open={showRating} onClose={() => setShowRating(false)}>
         <Box
           sx={{
