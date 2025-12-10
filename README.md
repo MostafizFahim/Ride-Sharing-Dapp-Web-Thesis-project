@@ -113,11 +113,7 @@ NexTrip/
 
 Below is the high-level architecture including blockchain, IPFS, backend, and UI layers.
 
-*(You can include your Figure images here if needed using screenshots folder)*
 
-Example:
-
-```
 ![System Architecture](screenshots/system_architecture.png)
 ```
 
