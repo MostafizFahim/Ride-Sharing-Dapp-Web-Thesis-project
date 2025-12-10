@@ -123,42 +123,59 @@ Example:
 
 ---
 
-## 📸 Screenshots
+# 📸 Screenshots  
 
-Ensure all UI images are placed in `/screenshots/`.
-
-Example layout for README:
-
-### 🔹 **Landing Page**
-
-```
+### **Landing Page**
 ![Landing Page](screenshots/landing_page.png)
-```
 
-### 🔹 **User Registration**
+### **Login**
+![Login](screenshots/login.png)
 
-```
+### **User Registration**
 ![Registration](screenshots/registration.png)
-```
 
-### 🔹 **Ride Request Interface**
+### **Driver Registration**
+![Driver Registration](screenshots/Driver_registration.png)
 
-```
-![Ride Request](screenshots/ride_request.png)
-```
+### **Ride Request Page**
+![Ride Request](screenshots/ui_ride_request.png)
 
-### 🔹 **Driver Dashboard**
+### **Ride In Process**
+![Ride In Process](screenshots/ui_ride_in_processs.png)
 
-```
-![Driver Dashboard](screenshots/driver_dashboard.png)
-```
+### **Driver Dashboard**
+![Driver Dashboard](screenshots/ui_driver_dashboard.png)
 
-### 🔹 **Admin Panel**
+### **Ride History**
+![Ride History](screenshots/ride_history.png)
 
-```
+### **Admin Dashboard**
 ![Admin Dashboard](screenshots/admin_dashboard.png)
-```
 
+---
+
+# 🔗 Blockchain & IPFS Screens  
+
+### **Bootnode Running**
+![Bootnode](screenshots/bootnode.png)
+
+### **Connected Geth Nodes**
+![Nodes](screenshots/nodes.png)
+
+### **Geth Log**
+![Geth Log](screenshots/geth_log.png)
+
+### **Deployed Smart Contract**
+![Deployed Contract](screenshots/deployed_contract.png)
+
+### **MetaMask Connect**
+![MetaMask Connect](screenshots/metamask_connect.png)
+
+### **MetaMask Transaction Confirmation**
+![MetaMask Tx](screenshots/metamask_tx.png)
+
+### **IPFS Upload Placeholder**
+![IPFS Placeholder](screenshots/ipfs_placeholder.png)
 ---
 
 ## 🧪 Experiments & Evaluation
