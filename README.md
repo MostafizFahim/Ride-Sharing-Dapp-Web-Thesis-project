@@ -149,4 +149,7 @@ Feel free to fork, modify, or cite with credit.
 
 
 
-## 📁 Project Structure  
+## 🎥 Demo Video
+Watch the full system walk-through video here:  
+🔗 https://drive.google.com/file/d/1RJ74MUg7t770ObmyK_L1EodLKGa3DaoE/view?usp=sharing
+
