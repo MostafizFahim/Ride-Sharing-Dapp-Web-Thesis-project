@@ -106,17 +106,6 @@ NexTrip/
 * React.js
 * Material-UI (MUI)
 * Web3 / Ethers
-
----
-
-## ⚙️ System Architecture
-
-Below is the high-level architecture including blockchain, IPFS, backend, and UI layers.
-
-
-![System Architecture](screenshots/system_architecture.png)
-```
-
 ---
 
 # 📸 Screenshots  
@@ -172,6 +161,9 @@ Below is the high-level architecture including blockchain, IPFS, backend, and UI
 
 ### **IPFS Upload Placeholder**
 ![IPFS Placeholder](screenshots/ipfs_placeholder.png)
+
+### **System Architecture**
+![System Architecture](screenshots/system_architecture.png)
 ---
 
 ## 🧪 Experiments & Evaluation
